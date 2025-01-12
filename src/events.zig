@@ -152,7 +152,7 @@ pub const HyprlandEvent = union(enum) {
     },
     workspacev2: struct {
         workspaceName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     focusedmon: struct {
         workspaceName: Location,
@@ -160,7 +160,7 @@ pub const HyprlandEvent = union(enum) {
     },
     focusedmonv2: struct {
         monitorName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     activewindow: struct {
         windowClass: Location,
@@ -189,14 +189,14 @@ pub const HyprlandEvent = union(enum) {
     },
     createworkspacev2: struct {
         workspaceName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     destroyworkspace: struct {
         workspaceName: Location,
     },
     destroyworkspacev2: struct {
         workspaceName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     moveworkspace: struct {
         workspaceName: Location,
@@ -205,10 +205,10 @@ pub const HyprlandEvent = union(enum) {
     moveworkspacev2: struct {
         workspaceName: Location,
         monitorName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     renameworkspace: struct {
-        workspaceId: Location,
+        workspaceId: u32,
         newName: Location,
     },
     activespecial: struct {
@@ -235,7 +235,7 @@ pub const HyprlandEvent = union(enum) {
     movewindowv2: struct {
         windowAddress: Location,
         workspaceName: Location,
-        workspaceId: Location,
+        workspaceId: u32,
     },
     openlayer: struct {
         namespace: Location,
@@ -319,7 +319,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .workspacev2 = .{
-                    .workspaceId = arg1,
+                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("focusedmon", commandName)) {
@@ -334,7 +334,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .focusedmonv2 = .{
                     .monitorName = arg1,
-                    .workspaceId = arg2,
+                    .workspaceId = try std.fmt.parseInt(arg2.apply(line)),
                 } };
             } else if (strEql("activewindow", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
@@ -380,7 +380,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .createworkspacev2 = .{
-                    .workspaceId = arg1,
+                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("destroyworkspace", commandName)) {
@@ -392,7 +392,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .destroyworkspacev2 = .{
-                    .workspaceId = arg1,
+                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("moveworkspace", commandName)) {
@@ -407,7 +407,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .moveworkspacev2 = .{
-                    .workspaceId = arg1,
+                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
                     .workspaceName = arg2,
                     .monitorName = arg3,
                 } };
@@ -415,7 +415,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .renameworkspace = .{
-                    .workspaceId = arg1,
+                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
                     .newName = arg2,
                 } };
             } else if (strEql("activespecial", commandName)) {
@@ -461,7 +461,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .movewindowv2 = .{
                     .windowAddress = arg1,
-                    .workspaceId = arg2,
+                    .workspaceId = std.fmt.parseInt(arg2.apply(line)),
                     .workspaceName = arg3,
                 } };
             } else if (strEql("openlayer", commandName)) {
