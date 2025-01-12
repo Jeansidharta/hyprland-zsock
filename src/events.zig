@@ -3,7 +3,13 @@ const utils = @import("./utils.zig");
 
 const log = std.log.scoped(.HyprlandEvents);
 
-const Location = struct { start: usize, len: usize };
+const Location = struct {
+    start: usize,
+    len: usize,
+    pub fn apply(self: @This(), str: []const u8) []const u8 {
+        return str[self.start .. self.start + self.len];
+    }
+};
 
 const EventParamsIter = struct {
     lastIndex: usize,
@@ -99,9 +105,15 @@ pub const HyprlandEventSocket = struct {
     /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
     /// Caller does **not** own returned slice
-    pub fn readEvent(self: *Self) !struct { []const u8, HyprlandEvent } {
+    pub fn readEvent(self: *Self) !struct {
+        rawEventString: []const u8,
+        parsedEvent: HyprlandEvent,
+    } {
         const line = try self.readLine();
-        return .{ line, try HyprlandEvent.parse(line) };
+        return .{
+            .rawEventString = line,
+            .parsedEvent = try HyprlandEvent.parse(line),
+        };
     }
 
     /// Reads from the socket and parses it into a HyprlandEvent object.
@@ -112,13 +124,13 @@ pub const HyprlandEventSocket = struct {
     ///
     /// Caller does **not** own returned slice
     pub fn consumeEvent(self: *Self) !struct {
-        line: []const u8,
-        event: HyprlandEvent,
+        rawEventString: []const u8,
+        parsedEvent: HyprlandEvent,
     } {
         const line = try self.consumeLine();
         return .{
-            .line = line,
-            .event = try HyprlandEvent.parse(line),
+            .rawEventString = line,
+            .parsedEvent = try HyprlandEvent.parse(line),
         };
     }
 
