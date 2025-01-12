@@ -4,6 +4,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    _ = b.addModule("hyprland-zsock", .{
+        .root_source_file = b.path("src/root.zig"),
+    });
+
     const lib = b.addStaticLibrary(.{
         .name = "hyprland-zsock",
         .root_source_file = b.path("src/root.zig"),
