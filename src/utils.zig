@@ -54,7 +54,7 @@ pub fn makeSocket() !std.posix.socket_t {
 
 pub fn openHyprlandSocket(socketType: SocketType) !std.posix.socket_t {
     const addr = try makeSocketAddr(socketType);
-    const socket = makeSocket();
+    const socket = try makeSocket();
     try std.posix.connect(socket, @ptrCast(&addr), @sizeOf(std.os.linux.sockaddr.un));
     return socket;
 }
