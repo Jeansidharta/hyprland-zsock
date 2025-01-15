@@ -39,6 +39,7 @@ pub const HyprlandEventSocket = struct {
     socket: std.os.linux.socket_t,
     buffer: [4 * 1024]u8 = undefined,
     start: usize = 0,
+    // end index is not part of the data.
     end: usize = 0,
 
     /// Read data from socket, without overflowing the buffer
@@ -55,10 +56,12 @@ pub const HyprlandEventSocket = struct {
         const end = self.end;
         const len = end - start;
         @memcpy(self.buffer[0..len], self.buffer[start..end]);
+        self.start = 0;
+        self.end = len;
     }
 
     /// Caller does **not** own returned slice
-    fn bufData(self: Self) []const u8 {
+    fn bufData(self: *const Self) []const u8 {
         return self.buffer[self.start..self.end];
     }
 
@@ -304,7 +307,7 @@ pub const HyprlandEvent = union(enum) {
 
     pub const ParseError = error{ MissingParams, InvalidParams, MissingCommandName, UnknownCommand };
 
-    pub fn parse(line: []const u8) ParseError!Self {
+    pub fn parse(line: []const u8) (ParseError || std.fmt.ParseIntError)!Self {
         var iter = std.mem.splitSequence(u8, line, ">>");
         const commandName = iter.next() orelse return ParseError.MissingCommandName;
         var paramsIter = EventParamsIter.init(commandName.len + 2, iter.next() orelse "");
@@ -319,7 +322,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .workspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("focusedmon", commandName)) {
@@ -334,7 +337,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .focusedmonv2 = .{
                     .monitorName = arg1,
-                    .workspaceId = try std.fmt.parseInt(arg2.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg2.apply(line), 10),
                 } };
             } else if (strEql("activewindow", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
@@ -380,7 +383,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .createworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("destroyworkspace", commandName)) {
@@ -392,7 +395,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .destroyworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("moveworkspace", commandName)) {
@@ -407,7 +410,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .moveworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
                     .workspaceName = arg2,
                     .monitorName = arg3,
                 } };
@@ -415,7 +418,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .renameworkspace = .{
-                    .workspaceId = try std.fmt.parseInt(arg1.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
                     .newName = arg2,
                 } };
             } else if (strEql("activespecial", commandName)) {
@@ -461,7 +464,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .movewindowv2 = .{
                     .windowAddress = arg1,
-                    .workspaceId = std.fmt.parseInt(arg2.apply(line)),
+                    .workspaceId = try std.fmt.parseInt(u32, arg2.apply(line), 10),
                     .workspaceName = arg3,
                 } };
             } else if (strEql("openlayer", commandName)) {
