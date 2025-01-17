@@ -15,6 +15,7 @@ const EventParamsIter = struct {
     lastIndex: usize,
     iter: std.mem.SplitIterator(u8, .scalar),
 
+    // Object lifetime equals that of the param string.
     fn init(
         initialIndex: usize,
         params: []const u8,
@@ -75,15 +76,16 @@ pub const HyprlandEventSocket = struct {
     pub fn readLine(self: *Self) ![]const u8 {
         while (true) {
             const data = self.bufData();
-            const index = std.mem.indexOfScalar(u8, data, '\n') orelse {
-                const isBufFull = self.end == self.buffer.len;
-                if (isBufFull) {
-                    self.flushBuffer();
-                }
-                _ = try self.readFromSocket();
-                continue;
-            };
-            return data[0..index];
+            if (std.mem.indexOfScalar(u8, data, '\n')) |index| return data[0..index];
+            const isBufFull = self.end == self.buffer.len;
+            if (isBufFull) {
+                self.flushBuffer();
+            }
+            const isBufStillFull = self.end == self.buffer.len;
+            if (isBufStillFull) {
+                return error.BufFull;
+            }
+            _ = try self.readFromSocket();
         }
     }
 
