@@ -79,15 +79,9 @@ pub const HyprlandEventSocket = struct {
     /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
     /// Caller does **not** own returned slice
-    pub fn readEvent(self: *Self) !struct {
-        rawEventString: []const u8,
-        parsedEvent: HyprlandEvent,
-    } {
+    pub fn readEvent(self: *Self) !HyprlandEvent {
         const line = try self.readLine();
-        return .{
-            .rawEventString = line,
-            .parsedEvent = try HyprlandEvent.parse(line),
-        };
+        return try HyprlandEvent.parse(line);
     }
 
     /// Reads from the socket and parses it into a HyprlandEvent object.
@@ -97,15 +91,9 @@ pub const HyprlandEventSocket = struct {
     /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
     /// Caller does **not** own returned slice
-    pub fn consumeEvent(self: *Self) !struct {
-        rawEventString: []const u8,
-        parsedEvent: HyprlandEvent,
-    } {
+    pub fn consumeEvent(self: *Self) !HyprlandEvent {
         const line = try self.consumeLine();
-        return .{
-            .rawEventString = line,
-            .parsedEvent = try HyprlandEvent.parse(line),
-        };
+        return try HyprlandEvent.parse(line);
     }
 
     pub fn deinit(self: @This()) void {
