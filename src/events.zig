@@ -3,37 +3,6 @@ const utils = @import("./utils.zig");
 
 const log = std.log.scoped(.HyprlandEvents);
 
-const Location = struct {
-    start: usize,
-    len: usize,
-    pub fn apply(self: @This(), str: []const u8) []const u8 {
-        return str[self.start .. self.start + self.len];
-    }
-};
-
-const EventParamsIter = struct {
-    lastIndex: usize,
-    iter: std.mem.SplitIterator(u8, .scalar),
-
-    // Object lifetime equals that of the param string.
-    fn init(
-        initialIndex: usize,
-        params: []const u8,
-    ) EventParamsIter {
-        return .{
-            .lastIndex = initialIndex,
-            .iter = std.mem.splitScalar(u8, params, ','),
-        };
-    }
-
-    fn next(self: *EventParamsIter) ?Location {
-        const str = self.iter.next() orelse return null;
-        const start = self.lastIndex;
-        self.lastIndex += str.len + 1;
-        return .{ .start = start, .len = str.len };
-    }
-};
-
 pub const HyprlandEventSocket = struct {
     const Self = @This();
 
@@ -153,138 +122,138 @@ pub const HyprlandEvent = union(enum) {
     const Self = @This();
 
     workspace: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
     },
     workspacev2: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
         workspaceId: u32,
     },
     focusedmon: struct {
-        workspaceName: Location,
-        monitorName: Location,
+        workspaceName: []const u8,
+        monitorName: []const u8,
     },
     focusedmonv2: struct {
-        monitorName: Location,
+        monitorName: []const u8,
         workspaceId: u32,
     },
     activewindow: struct {
-        windowClass: Location,
-        windowTitle: Location,
+        windowClass: []const u8,
+        windowTitle: []const u8,
     },
     activewindowv2: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     fullscreen: enum {
         exit,
         enter,
     },
     monitorremoved: struct {
-        monitorName: Location,
+        monitorName: []const u8,
     },
     monitoradded: struct {
-        monitorName: Location,
+        monitorName: []const u8,
     },
     monitoraddedv2: struct {
-        monitorName: Location,
-        monitorId: Location,
-        monitorDescription: Location,
+        monitorName: []const u8,
+        monitorId: []const u8,
+        monitorDescription: []const u8,
     },
     createworkspace: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
     },
     createworkspacev2: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
         workspaceId: u32,
     },
     destroyworkspace: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
     },
     destroyworkspacev2: struct {
-        workspaceName: Location,
+        workspaceName: []const u8,
         workspaceId: u32,
     },
     moveworkspace: struct {
-        workspaceName: Location,
-        monitorName: Location,
+        workspaceName: []const u8,
+        monitorName: []const u8,
     },
     moveworkspacev2: struct {
-        workspaceName: Location,
-        monitorName: Location,
+        workspaceName: []const u8,
+        monitorName: []const u8,
         workspaceId: u32,
     },
     renameworkspace: struct {
         workspaceId: u32,
-        newName: Location,
+        newName: []const u8,
     },
     activespecial: struct {
-        workspaceName: Location,
-        monitorName: Location,
+        workspaceName: []const u8,
+        monitorName: []const u8,
     },
     activelayout: struct {
-        keyboardName: Location,
-        layoutName: Location,
+        keyboardName: []const u8,
+        layoutName: []const u8,
     },
     openwindow: struct {
-        windowAddress: Location,
-        workspaceName: Location,
-        windowClass: Location,
-        windowTitle: Location,
+        windowAddress: []const u8,
+        workspaceName: []const u8,
+        windowClass: []const u8,
+        windowTitle: []const u8,
     },
     closewindow: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     movewindow: struct {
-        windowAddress: Location,
-        workspaceName: Location,
+        windowAddress: []const u8,
+        workspaceName: []const u8,
     },
     movewindowv2: struct {
-        windowAddress: Location,
-        workspaceName: Location,
+        windowAddress: []const u8,
+        workspaceName: []const u8,
         workspaceId: u32,
     },
     openlayer: struct {
-        namespace: Location,
+        namespace: []const u8,
     },
     closelayer: struct {
-        namespace: Location,
+        namespace: []const u8,
     },
     submap: struct {
-        submapName: Location,
+        submapName: []const u8,
     },
     changefloatingmode: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
         floating: bool,
     },
     urgent: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     screencast: struct {
         state: bool,
         owner: enum { monitor, window },
     },
     windowtitle: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     windowtitlev2: struct {
-        windowAddress: Location,
-        windowTitle: Location,
+        windowAddress: []const u8,
+        windowTitle: []const u8,
     },
     togglegroup: struct {
         state: bool,
         // TODO - This has to be an arrayList
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     moveintogroup: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     moveoutofgroup: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
     },
     ignoregrouplock: bool,
     lockgroups: bool,
     configreloaded,
     pin: struct {
-        windowAddress: Location,
+        windowAddress: []const u8,
         pinState: bool,
     },
 
@@ -298,8 +267,7 @@ pub const HyprlandEvent = union(enum) {
     fn strEql(a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);
     }
-    fn parseBoolString(location: Location, line: []const u8) !bool {
-        const str = line[location.start .. location.start + location.len];
+    fn parseBoolString(str: []const u8) !bool {
         if (strEql(str, "1")) {
             return true;
         } else if (strEql(str, "0")) {
@@ -312,7 +280,7 @@ pub const HyprlandEvent = union(enum) {
     pub fn parse(line: []const u8) (ParseError || std.fmt.ParseIntError)!Self {
         var iter = std.mem.splitSequence(u8, line, ">>");
         const commandName = iter.next() orelse return ParseError.MissingCommandName;
-        var paramsIter = EventParamsIter.init(commandName.len + 2, iter.next() orelse "");
+        var paramsIter = std.mem.splitScalar(u8, iter.next() orelse "", ',');
 
         const err: ParseError = err: {
             if (strEql("workspace", commandName)) {
@@ -324,7 +292,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .workspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1, 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("focusedmon", commandName)) {
@@ -339,7 +307,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .focusedmonv2 = .{
                     .monitorName = arg1,
-                    .workspaceId = try std.fmt.parseInt(u32, arg2.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg2, 10),
                 } };
             } else if (strEql("activewindow", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
@@ -355,7 +323,7 @@ pub const HyprlandEvent = union(enum) {
                 } };
             } else if (strEql("fullscreen", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
-                const state = parseBoolString(arg1, line) catch break :err error.InvalidParams;
+                const state = parseBoolString(arg1) catch break :err error.InvalidParams;
                 return .{ .fullscreen = if (state) .enter else .exit };
             } else if (strEql("monitorremoved", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
@@ -385,7 +353,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .createworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1, 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("destroyworkspace", commandName)) {
@@ -397,7 +365,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .destroyworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1, 10),
                     .workspaceName = arg2,
                 } };
             } else if (strEql("moveworkspace", commandName)) {
@@ -412,7 +380,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .moveworkspacev2 = .{
-                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1, 10),
                     .workspaceName = arg2,
                     .monitorName = arg3,
                 } };
@@ -420,7 +388,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .renameworkspace = .{
-                    .workspaceId = try std.fmt.parseInt(u32, arg1.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg1, 10),
                     .newName = arg2,
                 } };
             } else if (strEql("activespecial", commandName)) {
@@ -466,7 +434,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg3 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .movewindowv2 = .{
                     .windowAddress = arg1,
-                    .workspaceId = try std.fmt.parseInt(u32, arg2.apply(line), 10),
+                    .workspaceId = try std.fmt.parseInt(u32, arg2, 10),
                     .workspaceName = arg3,
                 } };
             } else if (strEql("openlayer", commandName)) {
@@ -489,7 +457,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .changefloatingmode = .{
                     .windowAddress = arg1,
-                    .floating = parseBoolString(arg2, line) catch break :err error.InvalidParams,
+                    .floating = parseBoolString(arg2) catch break :err error.InvalidParams,
                 } };
             } else if (strEql("urgent", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
@@ -499,9 +467,9 @@ pub const HyprlandEvent = union(enum) {
             } else if (strEql("screencast", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
-                const owner = parseBoolString(arg2, line) catch break :err error.InvalidParams;
+                const owner = parseBoolString(arg2) catch break :err error.InvalidParams;
                 return .{ .screencast = .{
-                    .state = parseBoolString(arg1, line) catch break :err error.InvalidParams,
+                    .state = parseBoolString(arg1) catch break :err error.InvalidParams,
                     .owner = if (owner) .window else .monitor,
                 } };
             } else if (strEql("windowtitle", commandName)) {
@@ -521,7 +489,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{
                     .togglegroup = .{
-                        .state = parseBoolString(arg1, line) catch break :err error.InvalidParams,
+                        .state = parseBoolString(arg1) catch break :err error.InvalidParams,
                         // TODO - make this an array
                         .windowAddress = arg2,
                     },
@@ -539,12 +507,12 @@ pub const HyprlandEvent = union(enum) {
             } else if (strEql("ignoregrouplock", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{
-                    .ignoregrouplock = parseBoolString(arg1, line) catch break :err error.InvalidParams,
+                    .ignoregrouplock = parseBoolString(arg1) catch break :err error.InvalidParams,
                 };
             } else if (strEql("lockgroups", commandName)) {
                 const arg1 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{
-                    .lockgroups = parseBoolString(arg1, line) catch break :err error.InvalidParams,
+                    .lockgroups = parseBoolString(arg1) catch break :err error.InvalidParams,
                 };
             } else if (strEql("configreloaded", commandName)) {
                 return .configreloaded;
@@ -553,7 +521,7 @@ pub const HyprlandEvent = union(enum) {
                 const arg2 = paramsIter.next() orelse break :err error.MissingParams;
                 return .{ .pin = .{
                     .windowAddress = arg1,
-                    .pinState = parseBoolString(arg2, line) catch break :err error.InvalidParams,
+                    .pinState = parseBoolString(arg2) catch break :err error.InvalidParams,
                 } };
             } else break :err error.UnknownCommand;
         };
