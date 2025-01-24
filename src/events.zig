@@ -168,9 +168,9 @@ pub const HyprlandEvent = union(enum) {
         windowAddress: []const u8,
     },
     /// emitted when a fullscreen status of a window changes.
-    fullscreen: enum {
-        exit,
-        enter,
+    fullscreen: enum(u8) {
+        exit = 0,
+        enter = 1,
     },
     /// emitted when a monitor is removed (disconnected)
     monitorremoved: struct {
@@ -279,7 +279,7 @@ pub const HyprlandEvent = union(enum) {
     /// mind there might be multiple separate clients.
     screencast: struct {
         state: bool,
-        owner: enum { monitor, window },
+        owner: enum(u8) { monitor = 0, window = 1 },
     },
     /// emitted when a window title changes.
     windowtitle: struct {
@@ -387,181 +387,63 @@ pub const HyprlandEvent = union(enum) {
         diags.command = commandName;
         var paramsIter = ParamsIterator.init(iter.next() orelse "", diags);
 
-        if (strEql("workspace", commandName)) {
-            return .{ .workspace = .{
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("workspacev2", commandName)) {
-            return .{ .workspacev2 = .{
-                .workspaceId = try paramsIter.nextInt(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("focusedmon", commandName)) {
-            return .{ .focusedmon = .{
-                .monitorName = try paramsIter.next(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("focusedmonv2", commandName)) {
-            return .{ .focusedmonv2 = .{
-                .monitorName = try paramsIter.next(),
-                .workspaceId = try paramsIter.nextInt(),
-            } };
-        } else if (strEql("activewindow", commandName)) {
-            return .{ .activewindow = .{
-                .windowClass = try paramsIter.next(),
-                .windowTitle = try paramsIter.next(),
-            } };
-        } else if (strEql("activewindowv2", commandName)) {
-            return .{ .activewindowv2 = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("fullscreen", commandName)) {
-            return .{ .fullscreen = if (try paramsIter.nextBool()) .enter else .exit };
-        } else if (strEql("monitorremoved", commandName)) {
-            return .{ .monitorremoved = .{
-                .monitorName = try paramsIter.next(),
-            } };
-        } else if (strEql("monitoradded", commandName)) {
-            return .{ .monitoradded = .{
-                .monitorName = try paramsIter.next(),
-            } };
-        } else if (strEql("monitoraddedv2", commandName)) {
-            return .{ .monitoraddedv2 = .{
-                .monitorId = try paramsIter.next(),
-                .monitorName = try paramsIter.next(),
-                .monitorDescription = try paramsIter.next(),
-            } };
-        } else if (strEql("createworkspace", commandName)) {
-            return .{ .createworkspace = .{
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("createworkspacev2", commandName)) {
-            return .{ .createworkspacev2 = .{
-                .workspaceId = try paramsIter.nextInt(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("destroyworkspace", commandName)) {
-            return .{ .destroyworkspace = .{
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("destroyworkspacev2", commandName)) {
-            return .{ .destroyworkspacev2 = .{
-                .workspaceId = try paramsIter.nextInt(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("moveworkspace", commandName)) {
-            return .{ .moveworkspace = .{
-                .workspaceName = try paramsIter.next(),
-                .monitorName = try paramsIter.next(),
-            } };
-        } else if (strEql("moveworkspacev2", commandName)) {
-            return .{ .moveworkspacev2 = .{
-                .workspaceId = try paramsIter.nextInt(),
-                .workspaceName = try paramsIter.next(),
-                .monitorName = try paramsIter.next(),
-            } };
-        } else if (strEql("renameworkspace", commandName)) {
-            return .{ .renameworkspace = .{
-                .workspaceId = try paramsIter.nextInt(),
-                .newName = try paramsIter.next(),
-            } };
-        } else if (strEql("activespecial", commandName)) {
-            return .{ .activespecial = .{
-                .workspaceName = try paramsIter.next(),
-                .monitorName = try paramsIter.next(),
-            } };
-        } else if (strEql("activelayout", commandName)) {
-            return .{ .activelayout = .{
-                .keyboardName = try paramsIter.next(),
-                .layoutName = try paramsIter.next(),
-            } };
-        } else if (strEql("openwindow", commandName)) {
-            return .{ .openwindow = .{
-                .windowAddress = try paramsIter.next(),
-                .workspaceName = try paramsIter.next(),
-                .windowClass = try paramsIter.next(),
-                .windowTitle = try paramsIter.next(),
-            } };
-        } else if (strEql("closewindow", commandName)) {
-            return .{ .closewindow = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("movewindow", commandName)) {
-            return .{ .movewindow = .{
-                .windowAddress = try paramsIter.next(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("movewindowv2", commandName)) {
-            return .{ .movewindowv2 = .{
-                .windowAddress = try paramsIter.next(),
-                .workspaceId = try paramsIter.nextInt(),
-                .workspaceName = try paramsIter.next(),
-            } };
-        } else if (strEql("openlayer", commandName)) {
-            return .{ .openlayer = .{
-                .namespace = try paramsIter.next(),
-            } };
-        } else if (strEql("closelayer", commandName)) {
-            return .{ .closelayer = .{
-                .namespace = try paramsIter.next(),
-            } };
-        } else if (strEql("submap", commandName)) {
-            return .{ .submap = .{
-                .submapName = try paramsIter.next(),
-            } };
-        } else if (strEql("changefloatingmode", commandName)) {
-            return .{ .changefloatingmode = .{
-                .windowAddress = try paramsIter.next(),
-                .floating = try paramsIter.nextBool(),
-            } };
-        } else if (strEql("urgent", commandName)) {
-            return .{ .urgent = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("screencast", commandName)) {
-            return .{ .screencast = .{
+        // Check for this is separate from the others because of the unique
+        // windowAddress type, which is difficult to handle in comptime.
+        if (std.mem.eql(u8, commandName, "togglegroup")) {
+            return .{ .togglegroup = .{
                 .state = try paramsIter.nextBool(),
-                .owner = if (try paramsIter.nextBool()) .window else .monitor,
+                .windowAddress = paramsIter.innerIter,
             } };
-        } else if (strEql("windowtitle", commandName)) {
-            return .{ .windowtitle = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("windowtitlev2", commandName)) {
-            return .{ .windowtitlev2 = .{
-                .windowAddress = try paramsIter.next(),
-                .windowTitle = try paramsIter.next(),
-            } };
-        } else if (strEql("togglegroup", commandName)) {
-            return .{
-                .togglegroup = .{
-                    .state = try paramsIter.nextBool(),
-                    .windowAddress = paramsIter.innerIter,
-                },
-            };
-        } else if (strEql("moveintogroup", commandName)) {
-            return .{ .moveintogroup = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("moveoutofgroup", commandName)) {
-            return .{ .moveoutofgroup = .{
-                .windowAddress = try paramsIter.next(),
-            } };
-        } else if (strEql("ignoregrouplock", commandName)) {
-            return .{
-                .ignoregrouplock = try paramsIter.nextBool(),
-            };
-        } else if (strEql("lockgroups", commandName)) {
-            return .{
-                .lockgroups = try paramsIter.nextBool(),
-            };
-        } else if (strEql("configreloaded", commandName)) {
-            return .configreloaded;
-        } else if (strEql("pin", commandName)) {
-            return .{ .pin = .{
-                .windowAddress = try paramsIter.next(),
-                .pinState = try paramsIter.nextBool(),
-            } };
-        } else return error.UnknownCommand;
+        }
+
+        // This is a bit of complicated comptime to check for every event and read
+        // its arguments in the proper order. Essentially, this would do something like:
+        //
+        // ```zig
+        // if (std.mem.eql(u8, commandName, "aCommandName")) {
+        //   return .{ .aCommandName = .{
+        //     .arg1 = try paramsIter.next(), // This will be a string
+        //     .arg2 = try paramsIter.nextInt(), // This will be an int
+        //     .arg3 = try paramsIter.nextBool(), // This will be a boolean
+        //   } };
+        // }
+        // ```
+        const allEventFields = @typeInfo(@This()).@"union".fields;
+        inline for (allEventFields) |field| {
+            if (std.mem.eql(u8, field.name, commandName)) {
+                switch (@typeInfo(field.type)) {
+                    .bool => return @unionInit(Self, field.name, try paramsIter.nextBool()),
+                    .int => return @unionInit(Self, field.name, try paramsIter.nextInt()),
+                    .pointer => return @unionInit(Self, field.name, try paramsIter.next()),
+                    .@"enum" => |e| {
+                        // Assume this is an integer enum that starts at 0 and have no gaps.
+                        const int = try paramsIter.nextInt();
+                        if (int >= e.fields.len) return error.InvalidBoolean;
+                        return @unionInit(Self, field.name, @enumFromInt(int));
+                    },
+                    .@"struct" => |structType| {
+                        var event: field.type = undefined;
+                        inline for (structType.fields) |innerField| {
+                            switch (@typeInfo(innerField.type)) {
+                                .bool => @field(event, innerField.name) = try paramsIter.nextBool(),
+                                .int => @field(event, innerField.name) = try paramsIter.nextInt(),
+                                .pointer => @field(event, innerField.name) = try paramsIter.next(),
+                                .@"enum" => |e| {
+                                    // Assume this is an integer enum that starts at 0
+                                    // and have no gaps.
+                                    const int = try paramsIter.nextInt();
+                                    if (int >= e.fields.len) return error.InvalidBoolean;
+                                    @field(event, innerField.name) = @enumFromInt(int);
+                                },
+                                else => unreachable,
+                            }
+                        }
+                        return @unionInit(Self, field.name, event);
+                    },
+                    else => unreachable,
+                }
+            }
+        }
+        return error.UnknownCommand;
     }
 };

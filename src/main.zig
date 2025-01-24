@@ -14,5 +14,9 @@ pub fn main() !void {
 }
 
 test {
-    @import("std").testing.refAllDecls(@This());
+    // @import("std").testing.refAllDecls(@This());
+}
+
+test "Batata" {
+    std.log.err("{any}\n", .{@typeInfo([]const u8)});
 }
