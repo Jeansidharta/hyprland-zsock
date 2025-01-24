@@ -11,11 +11,6 @@ pub const ParseDiagnostics = struct {
     /// if provided, the parser parsed at least one argument.
     lastArgumentRead: ?[]const u8 = null,
     numberOfArgumentsRead: u8 = 0,
-
-    fn setLastArg(self: *@This(), arg: []const u8) void {
-        self.lastArgumentRead = arg;
-        self.numberOfArgumentsRead += 1;
-    }
 };
 
 /// The main structure to receive events from the Hyprland Event socket.
@@ -330,13 +325,6 @@ pub const HyprlandEvent = union(enum) {
     fn strEql(a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);
     }
-    fn parseBoolString(str: []const u8) !bool {
-        if (strEql(str, "1")) {
-            return true;
-        } else if (strEql(str, "0")) {
-            return false;
-        } else return error.InvalidString;
-    }
 
     pub const ParseErrorSet = error{
         /// The event type was expecting more parameters than provided in the string.
@@ -351,6 +339,41 @@ pub const HyprlandEvent = union(enum) {
         UnknownCommand,
     };
 
+    /// A small wrapper around the default std.mem.SplitIterator for better
+    /// ergonomics. Will automatically update the diagnostics object, and
+    /// return the proper parsing error.
+    const ParamsIterator = struct {
+        innerIter: std.mem.SplitIterator(u8, .scalar),
+        diagnostics: *ParseDiagnostics,
+        pub fn init(str: []const u8, diags: *ParseDiagnostics) @This() {
+            return .{
+                .innerIter = std.mem.splitScalar(u8, str, ','),
+                .diagnostics = diags,
+            };
+        }
+        pub fn next(self: *@This()) ParseErrorSet![]const u8 {
+            const arg = self.innerIter.next() orelse return error.MissingParams;
+            self.diagnostics.lastArgumentRead = arg;
+            self.diagnostics.numberOfArgumentsRead += 1;
+            return arg;
+        }
+        pub fn nextInt(self: *@This()) ParseErrorSet!u32 {
+            const arg = try self.next();
+            return std.fmt.parseInt(u32, arg, 10) catch return error.InvalidInteger;
+        }
+        fn parseBoolString(str: []const u8) ParseErrorSet!bool {
+            if (strEql(str, "1")) {
+                return true;
+            } else if (strEql(str, "0")) {
+                return false;
+            } else return error.InvalidBoolean;
+        }
+        pub fn nextBool(self: *@This()) ParseErrorSet!bool {
+            const arg = try self.next();
+            return parseBoolString(arg);
+        }
+    };
+
     /// Try to parse event from the given string. The returned event object will have
     /// a lifetime equal to the provided string. The returned object does **not** have to
     /// be deinit-ed.
@@ -361,314 +384,183 @@ pub const HyprlandEvent = union(enum) {
         diags.line = line;
         var iter = std.mem.splitSequence(u8, line, ">>");
         const commandName = iter.next() orelse return error.MissingCommandName;
-        var paramsIter = std.mem.splitScalar(u8, iter.next() orelse "", ',');
         diags.command = commandName;
+        var paramsIter = ParamsIterator.init(iter.next() orelse "", diags);
 
         if (strEql("workspace", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .workspace = .{
-                .workspaceName = arg1,
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("workspacev2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const workspaceId = std.fmt.parseInt(u32, arg1, 10) catch return error.InvalidInteger;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .workspacev2 = .{
-                .workspaceId = workspaceId,
-                .workspaceName = arg2,
+                .workspaceId = try paramsIter.nextInt(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("focusedmon", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .focusedmon = .{
-                .monitorName = arg1,
-                .workspaceName = arg2,
+                .monitorName = try paramsIter.next(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("focusedmonv2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const workspaceId = std.fmt.parseInt(u32, arg2, 10) catch return error.InvalidInteger;
             return .{ .focusedmonv2 = .{
-                .monitorName = arg1,
-                .workspaceId = workspaceId,
+                .monitorName = try paramsIter.next(),
+                .workspaceId = try paramsIter.nextInt(),
             } };
         } else if (strEql("activewindow", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .activewindow = .{
-                .windowClass = arg1,
-                .windowTitle = arg2,
+                .windowClass = try paramsIter.next(),
+                .windowTitle = try paramsIter.next(),
             } };
         } else if (strEql("activewindowv2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .activewindowv2 = .{
-                .windowAddress = arg1,
+                .windowAddress = try paramsIter.next(),
             } };
         } else if (strEql("fullscreen", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const state = parseBoolString(arg1) catch return error.InvalidBoolean;
-            return .{ .fullscreen = if (state) .enter else .exit };
+            return .{ .fullscreen = if (try paramsIter.nextBool()) .enter else .exit };
         } else if (strEql("monitorremoved", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .monitorremoved = .{
-                .monitorName = arg1,
+                .monitorName = try paramsIter.next(),
             } };
         } else if (strEql("monitoradded", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .monitoradded = .{
-                .monitorName = arg1,
+                .monitorName = try paramsIter.next(),
             } };
         } else if (strEql("monitoraddedv2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const arg3 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg3);
             return .{ .monitoraddedv2 = .{
-                .monitorId = arg1,
-                .monitorName = arg2,
-                .monitorDescription = arg3,
+                .monitorId = try paramsIter.next(),
+                .monitorName = try paramsIter.next(),
+                .monitorDescription = try paramsIter.next(),
             } };
         } else if (strEql("createworkspace", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .createworkspace = .{
-                .workspaceName = arg1,
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("createworkspacev2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const workspaceId = std.fmt.parseInt(u32, arg1, 10) catch return error.InvalidInteger;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .createworkspacev2 = .{
-                .workspaceId = workspaceId,
-                .workspaceName = arg2,
+                .workspaceId = try paramsIter.nextInt(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("destroyworkspace", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .destroyworkspace = .{
-                .workspaceName = arg1,
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("destroyworkspacev2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const workspaceId = std.fmt.parseInt(u32, arg1, 10) catch return error.InvalidInteger;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .destroyworkspacev2 = .{
-                .workspaceId = workspaceId,
-                .workspaceName = arg2,
+                .workspaceId = try paramsIter.nextInt(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("moveworkspace", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .moveworkspace = .{
-                .workspaceName = arg1,
-                .monitorName = arg2,
+                .workspaceName = try paramsIter.next(),
+                .monitorName = try paramsIter.next(),
             } };
         } else if (strEql("moveworkspacev2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const workspaceId = std.fmt.parseInt(u32, arg1, 10) catch return error.InvalidInteger;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const arg3 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg3);
             return .{ .moveworkspacev2 = .{
-                .workspaceId = workspaceId,
-                .workspaceName = arg2,
-                .monitorName = arg3,
+                .workspaceId = try paramsIter.nextInt(),
+                .workspaceName = try paramsIter.next(),
+                .monitorName = try paramsIter.next(),
             } };
         } else if (strEql("renameworkspace", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const workspaceId = std.fmt.parseInt(u32, arg1, 10) catch return error.InvalidInteger;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .renameworkspace = .{
-                .workspaceId = workspaceId,
-                .newName = arg2,
+                .workspaceId = try paramsIter.nextInt(),
+                .newName = try paramsIter.next(),
             } };
         } else if (strEql("activespecial", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .activespecial = .{
-                .workspaceName = arg1,
-                .monitorName = arg2,
+                .workspaceName = try paramsIter.next(),
+                .monitorName = try paramsIter.next(),
             } };
         } else if (strEql("activelayout", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .activelayout = .{
-                .keyboardName = arg1,
-                .layoutName = arg2,
+                .keyboardName = try paramsIter.next(),
+                .layoutName = try paramsIter.next(),
             } };
         } else if (strEql("openwindow", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const arg3 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg3);
-            const arg4 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg4);
             return .{ .openwindow = .{
-                .windowAddress = arg1,
-                .workspaceName = arg2,
-                .windowClass = arg3,
-                .windowTitle = arg4,
+                .windowAddress = try paramsIter.next(),
+                .workspaceName = try paramsIter.next(),
+                .windowClass = try paramsIter.next(),
+                .windowTitle = try paramsIter.next(),
             } };
         } else if (strEql("closewindow", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .closewindow = .{
-                .windowAddress = arg1,
+                .windowAddress = try paramsIter.next(),
             } };
         } else if (strEql("movewindow", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .movewindow = .{
-                .windowAddress = arg1,
-                .workspaceName = arg2,
+                .windowAddress = try paramsIter.next(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("movewindowv2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const workspaceId = std.fmt.parseInt(u32, arg2, 10) catch return error.InvalidInteger;
-            const arg3 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg3);
             return .{ .movewindowv2 = .{
-                .windowAddress = arg1,
-                .workspaceId = workspaceId,
-                .workspaceName = arg3,
+                .windowAddress = try paramsIter.next(),
+                .workspaceId = try paramsIter.nextInt(),
+                .workspaceName = try paramsIter.next(),
             } };
         } else if (strEql("openlayer", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .openlayer = .{
-                .namespace = arg1,
+                .namespace = try paramsIter.next(),
             } };
         } else if (strEql("closelayer", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .closelayer = .{
-                .namespace = arg1,
+                .namespace = try paramsIter.next(),
             } };
         } else if (strEql("submap", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .submap = .{
-                .submapName = arg1,
+                .submapName = try paramsIter.next(),
             } };
         } else if (strEql("changefloatingmode", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const floating = parseBoolString(arg1) catch return error.InvalidBoolean;
             return .{ .changefloatingmode = .{
-                .windowAddress = arg1,
-                .floating = floating,
+                .windowAddress = try paramsIter.next(),
+                .floating = try paramsIter.nextBool(),
             } };
         } else if (strEql("urgent", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .urgent = .{
-                .windowAddress = arg1,
+                .windowAddress = try paramsIter.next(),
             } };
         } else if (strEql("screencast", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const state = parseBoolString(arg1) catch return error.InvalidBoolean;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const owner = parseBoolString(arg2) catch return error.InvalidBoolean;
             return .{ .screencast = .{
-                .state = state,
-                .owner = if (owner) .window else .monitor,
+                .state = try paramsIter.nextBool(),
+                .owner = if (try paramsIter.nextBool()) .window else .monitor,
             } };
         } else if (strEql("windowtitle", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .windowtitle = .{
-                .windowAddress = arg1,
+                .windowAddress = try paramsIter.next(),
             } };
         } else if (strEql("windowtitlev2", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{ .windowtitlev2 = .{
-                .windowAddress = arg1,
-                .windowTitle = arg2,
+                .windowAddress = try paramsIter.next(),
+                .windowTitle = try paramsIter.next(),
             } };
         } else if (strEql("togglegroup", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const state = parseBoolString(arg1) catch return error.InvalidBoolean;
             return .{
                 .togglegroup = .{
-                    .state = state,
-                    .windowAddress = paramsIter,
+                    .state = try paramsIter.nextBool(),
+                    .windowAddress = paramsIter.innerIter,
                 },
             };
         } else if (strEql("moveintogroup", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
             return .{ .moveintogroup = .{
-                .windowAddress = arg1,
+                .windowAddress = try paramsIter.next(),
             } };
         } else if (strEql("moveoutofgroup", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            return .{ .moveoutofgroup = .{ .windowAddress = arg1 } };
+            return .{ .moveoutofgroup = .{
+                .windowAddress = try paramsIter.next(),
+            } };
         } else if (strEql("ignoregrouplock", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const ignoreGroupLock = parseBoolString(arg1) catch return error.InvalidBoolean;
-            return .{ .ignoregrouplock = ignoreGroupLock };
+            return .{
+                .ignoregrouplock = try paramsIter.nextBool(),
+            };
         } else if (strEql("lockgroups", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const lockGroups = parseBoolString(arg1) catch return error.InvalidBoolean;
-            return .{ .lockgroups = lockGroups };
+            return .{
+                .lockgroups = try paramsIter.nextBool(),
+            };
         } else if (strEql("configreloaded", commandName)) {
             return .configreloaded;
         } else if (strEql("pin", commandName)) {
-            const arg1 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg1);
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
-            const pinState = parseBoolString(arg2) catch return error.InvalidBoolean;
             return .{ .pin = .{
-                .windowAddress = arg1,
-                .pinState = pinState,
+                .windowAddress = try paramsIter.next(),
+                .pinState = try paramsIter.nextBool(),
             } };
         } else return error.UnknownCommand;
     }
