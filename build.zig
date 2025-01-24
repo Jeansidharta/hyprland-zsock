@@ -16,14 +16,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
-    const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
+    const exe = b.addExecutable(.{
+        .name = "hyprland-zsock",
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
+    b.installArtifact(exe);
+    const run_command = b.addRunArtifact(exe);
+    run_command.step.dependOn(b.getInstallStep());
 
-    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+    if (b.args) |args| {
+        run_command.addArgs(args);
+    }
 
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_lib_unit_tests.step);
+    const run_step = b.step("run", "Run program");
+    run_step.dependOn(&run_command.step);
 }

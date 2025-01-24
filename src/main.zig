@@ -1,16 +1,15 @@
 const std = @import("std");
-const HyprlandEventIpc = @import("./ipc.zig");
+const HyprlandIPC = @import("./ipc.zig");
+const HyprlandEvents = @import("./events.zig").HyprlandEventSocket;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // const alloc = gpa.allocator();
 
-    var socket = try HyprlandEventIpc.init();
+    var socket = try HyprlandEvents.open();
     while (true) {
-        const response = try socket.sendCommand(alloc, .devices, void{});
-        defer response.deinit();
-        std.debug.print("{any}\n", .{response.variant});
-        std.time.sleep(1000000000);
+        const event = try socket.consumeEvent(null);
+        std.debug.print("{}\n", .{event});
     }
 }
 
