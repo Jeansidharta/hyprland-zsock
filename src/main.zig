@@ -6,7 +6,7 @@ pub fn main() !void {
     // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     // const alloc = gpa.allocator();
 
-    var socket = try HyprlandEvents.open();
+    var socket = try HyprlandEvents.init();
     while (true) {
         const event = try socket.consumeEvent(null);
         std.debug.print("{}\n", .{event});

@@ -18,16 +18,24 @@ pub const ParseDiagnostics = struct {
     }
 };
 
+/// The main structure to receive events from the Hyprland Event socket.
+/// Uses an internal buffer with no memory allocations.
 pub const HyprlandEventSocket = struct {
     const Self = @This();
 
     socket: std.posix.socket_t,
+    // We might use a ring buffer here, but that would require some unpleasant
+    // logic to ppopulate the strings in the HyprlandEvent struct, since they
+    // would all have to be continuous spaces in memory, and a ring buffer may wrap.
     buffer: [4 * 1024]u8 = undefined,
+    /// First index in the buffer with data.
     start: usize = 0,
-    // end index is not part of the data.
+    /// First index in the buffer that does not contain data.
+    /// The index before it must contain data (if the buffer is not empty).
     end: usize = 0,
 
-    /// Read data from socket, without overflowing the buffer
+    /// Read data from socket, until internal buffer is full.
+    /// If buffer is full, will read nothing. Don't forget to flush the buffer.
     /// Caller does **not** own returned slice
     pub fn readFromSocket(self: *Self) ![]u8 {
         const len = try std.posix.read(self.socket, self.buffer[self.end..self.buffer.len]);
@@ -35,7 +43,7 @@ pub const HyprlandEventSocket = struct {
         return self.buffer[self.start..self.end];
     }
 
-    /// Move all data to the start of the buffer
+    /// Move all data to the start of the buffer, freeing some space at the end.
     pub fn flushBuffer(self: *Self) void {
         const start = self.start;
         const end = self.end;
@@ -45,7 +53,9 @@ pub const HyprlandEventSocket = struct {
         self.end = len;
     }
 
-    /// Caller does **not** own returned slice
+    /// Get a slice with the meaningful data in the buffer.
+    /// Returned slice's lifetime matches that of self.
+    /// Returned slice may be invalidated on any read operations.
     fn bufData(self: *const Self) []const u8 {
         return self.buffer[self.start..self.end];
     }
@@ -54,9 +64,9 @@ pub const HyprlandEventSocket = struct {
     /// the content of the line, without the newline character.
     ///
     /// Doesn't advance the buffer, therefore consecutive calls will return the same data.
-    /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
-    /// Caller does **not** own returned slice
+    /// Returned slice may be invalidated if the internal buffer is mutated.
+    /// Returned slice's lifetime matches that of self
     pub fn readLine(self: *Self) ![]const u8 {
         while (true) {
             const data = self.bufData();
@@ -67,7 +77,7 @@ pub const HyprlandEventSocket = struct {
             }
             const isBufStillFull = self.end == self.buffer.len;
             if (isBufStillFull) {
-                return error.BufFull;
+                return error.BufferFull;
             }
             _ = try self.readFromSocket();
         }
@@ -77,9 +87,9 @@ pub const HyprlandEventSocket = struct {
     /// of the line without the newline character.
     ///
     /// Advances the buffer. Therefore consecutive calls will return different data.
-    /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
-    /// Caller does **not** own returned slice
+    /// Returned slice may be invalidated if the internal buffer is mutated.
+    /// Returned slice's lifetime matches that of self
     pub fn consumeLine(self: *Self) ![]const u8 {
         const line = try self.readLine();
         self.start += line.len + 1; // add one to skip the newline character
@@ -91,9 +101,9 @@ pub const HyprlandEventSocket = struct {
     /// Returns a Tuple with the read line, and the parsed event.
     ///
     /// Doesn't advance the buffer, therefore consecutive calls will return the same data.
-    /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
-    /// Caller does **not** own returned slice
+    /// Returned slice may be invalidated if the internal buffer is mutated.
+    /// Returned slice's lifetime matches that of self
     pub fn readEvent(self: *Self) !HyprlandEvent {
         const line = try self.readLine();
         return try HyprlandEvent.parse(line);
@@ -103,169 +113,219 @@ pub const HyprlandEventSocket = struct {
     /// Returns a Tuple with the read line, and the parsed event.
     ///
     /// Advances the buffer, therefore consecutive calls will return different data.
-    /// Data is possibly invalidated after any call to `consumeLine` or `consumeEvent`.
     ///
-    /// Caller does **not** own returned slice
+    /// Returned slice may be invalidated if the internal buffer is mutated.
+    /// Returned slice's lifetime matches that of self
     pub fn consumeEvent(self: *Self, diags: ?*ParseDiagnostics) !HyprlandEvent {
         const line = try self.consumeLine();
         return try HyprlandEvent.parse(line, diags);
     }
 
+    /// Closes socket to Hyprland.
     pub fn deinit(self: @This()) void {
         std.posix.close(self.socket);
     }
 
-    pub fn open() !Self {
+    /// Opens socket to Hyprland.
+    pub fn init() !Self {
         const socket = try utils.openHyprlandSocket(.eventSocket);
         return .{ .socket = socket };
     }
 };
 
+/// An object representing an event reported by Hyprland.
+///
+/// You can read more about the events here:
+/// https://wiki.hyprland.org/IPC/#events-list
 pub const HyprlandEvent = union(enum) {
     const Self = @This();
 
+    /// emitted on workspace change. Is emitted ONLY when a user
+    /// requests a workspace change, and is not emitted on mouse
+    /// movements (see focusedmon)
     workspace: struct {
         workspaceName: []const u8,
     },
+    /// emitted on workspace change. Is emitted ONLY when a user
+    /// requests a workspace change, and is not emitted on mouse
+    /// movements (see focusedmon)
     workspacev2: struct {
         workspaceName: []const u8,
         workspaceId: u32,
     },
+    /// emitted on the active monitor being changed.
     focusedmon: struct {
         workspaceName: []const u8,
         monitorName: []const u8,
     },
+    /// emitted on the active monitor being changed.
     focusedmonv2: struct {
         monitorName: []const u8,
         workspaceId: u32,
     },
+    /// emitted on the active window being changed.
     activewindow: struct {
         windowClass: []const u8,
         windowTitle: []const u8,
     },
+    /// emitted on the active window being changed.
     activewindowv2: struct {
         windowAddress: []const u8,
     },
+    /// emitted when a fullscreen status of a window changes.
     fullscreen: enum {
         exit,
         enter,
     },
+    /// emitted when a monitor is removed (disconnected)
     monitorremoved: struct {
         monitorName: []const u8,
     },
+    /// emitted when a monitor is added (connected)
     monitoradded: struct {
         monitorName: []const u8,
     },
+    /// emitted when a monitor is added (connected)
     monitoraddedv2: struct {
         monitorName: []const u8,
         monitorId: []const u8,
         monitorDescription: []const u8,
     },
+    /// emitted when a workspace is created
     createworkspace: struct {
         workspaceName: []const u8,
     },
+    /// emitted when a workspace is created
     createworkspacev2: struct {
         workspaceName: []const u8,
         workspaceId: u32,
     },
+    /// emitted when a workspace is destroyed
     destroyworkspace: struct {
         workspaceName: []const u8,
     },
+    /// emitted when a workspace is destroyed
     destroyworkspacev2: struct {
         workspaceName: []const u8,
         workspaceId: u32,
     },
+    /// emitted when a workspace is moved to a different monitor
     moveworkspace: struct {
         workspaceName: []const u8,
         monitorName: []const u8,
     },
+    /// emitted when a workspace is moved to a different monitor
     moveworkspacev2: struct {
         workspaceName: []const u8,
         monitorName: []const u8,
         workspaceId: u32,
     },
+    /// emitted when a workspace is renamed
     renameworkspace: struct {
         workspaceId: u32,
         newName: []const u8,
     },
+    /// emitted when the special workspace opened in a monitor
+    /// changes (closing results in an empty WORKSPACENAME)
     activespecial: struct {
         workspaceName: []const u8,
         monitorName: []const u8,
     },
+    /// emitted on a layout change of the active keyboard
     activelayout: struct {
         keyboardName: []const u8,
         layoutName: []const u8,
     },
+    /// emitted when a window is opened
     openwindow: struct {
         windowAddress: []const u8,
         workspaceName: []const u8,
         windowClass: []const u8,
         windowTitle: []const u8,
     },
+    /// emitted when a window is closed
     closewindow: struct {
         windowAddress: []const u8,
     },
+    /// emitted when a window is closed
     movewindow: struct {
         windowAddress: []const u8,
         workspaceName: []const u8,
     },
+    /// emitted when a window is closed
     movewindowv2: struct {
         windowAddress: []const u8,
         workspaceName: []const u8,
         workspaceId: u32,
     },
+    /// emitted when a layerSurface is mapped
     openlayer: struct {
         namespace: []const u8,
     },
+    /// emitted when a layerSurface is unmapped
     closelayer: struct {
         namespace: []const u8,
     },
+    /// emitted when a keybind submap changes. Empty means default.
     submap: struct {
         submapName: []const u8,
     },
+    /// emitted when a window changes its floating mode.
+    /// FLOATING is either 0 or 1.
     changefloatingmode: struct {
         windowAddress: []const u8,
         floating: bool,
     },
+    /// emitted when a window requests an urgent state
     urgent: struct {
         windowAddress: []const u8,
     },
+    /// emitted when a screencopy state of a client changes. Keep in
+    /// mind there might be multiple separate clients.
     screencast: struct {
         state: bool,
         owner: enum { monitor, window },
     },
+    /// emitted when a window title changes.
     windowtitle: struct {
         windowAddress: []const u8,
     },
+    /// emitted when a window title changes.
     windowtitlev2: struct {
         windowAddress: []const u8,
         windowTitle: []const u8,
     },
+    /// emitted when togglegroup command is used.
+    /// returns state,handle where the state is a toggle status and the handle
+    /// is one or more window addresses separated by a comma e.g.
+    /// 0,64cea2525760,64cea2522380 where 0 means that a group has been destroyed
+    /// and the rest informs which windows were part of it
     togglegroup: struct {
         state: bool,
-        // TODO - This has to be an arrayList
-        windowAddress: []const u8,
+        /// An iterator that returns the windows affected
+        windowAddress: std.mem.SplitIterator(u8, .scalar),
     },
+    /// emitted when the window is merged into a group. returns the address of a
+    /// merged window
     moveintogroup: struct {
         windowAddress: []const u8,
     },
+    /// emitted when the window is removed from a group. returns the address of
+    /// a removed window
     moveoutofgroup: struct {
         windowAddress: []const u8,
     },
+    /// emitted when ignoregrouplock is toggled.
     ignoregrouplock: bool,
+    /// emitted when lockgroups is toggled.
     lockgroups: bool,
+    /// emitted when the config is done reloading
     configreloaded,
+    /// emitted when a window is pinned or unpinned
     pin: struct {
         windowAddress: []const u8,
         pinState: bool,
     },
-
-    fn lowercase(comptime name: []u8) []u8 {
-        for (0..name.len) |index| {
-            name[index] = std.ascii.toLower(name[index]);
-        }
-        return name;
-    }
 
     fn strEql(a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);
@@ -283,7 +343,7 @@ pub const HyprlandEvent = union(enum) {
         MissingParams,
         /// The last read parameter cannot be converted to a boolean
         InvalidBoolean,
-        /// The last read parameter cannot be converted to a integer
+        /// The last read parameter cannot be converted to an integer
         InvalidInteger,
         /// The string parsed does not contain a command.
         MissingCommandName,
@@ -572,13 +632,10 @@ pub const HyprlandEvent = union(enum) {
             const arg1 = paramsIter.next() orelse return error.MissingParams;
             diags.setLastArg(arg1);
             const state = parseBoolString(arg1) catch return error.InvalidBoolean;
-            const arg2 = paramsIter.next() orelse return error.MissingParams;
-            diags.setLastArg(arg2);
             return .{
                 .togglegroup = .{
                     .state = state,
-                    // TODO - make this an array
-                    .windowAddress = arg2,
+                    .windowAddress = paramsIter,
                 },
             };
         } else if (strEql("moveintogroup", commandName)) {
