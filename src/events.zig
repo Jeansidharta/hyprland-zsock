@@ -4,12 +4,15 @@ const utils = @import("./utils.zig");
 const log = std.log.scoped(.HyprlandEvents);
 const Allocator = std.mem.Allocator;
 
+/// An object containing important context for a ParseError.
 pub const ParseDiagnostics = struct {
+    /// The original line that was bein parsed when the error occurred.
     line: []const u8,
-    /// If provided, the parser could parse the command.
+    /// The command that was being parsed. If null, no command was found.
     command: ?[]const u8 = null,
-    /// if provided, the parser parsed at least one argument.
+    /// The last argument that was being parsed. If null, no argument was found.
     lastArgumentRead: ?[]const u8 = null,
+    /// The number of arguments that were read.
     numberOfArgumentsRead: u8 = 0,
 };
 
@@ -72,6 +75,7 @@ pub const HyprlandEventSocket = struct {
             }
             const isBufStillFull = self.end == self.buffer.len;
             if (isBufStillFull) {
+                // If you get this error, increase the buffer size.
                 return error.BufferFull;
             }
             _ = try self.readFromSocket();
@@ -133,7 +137,24 @@ pub const HyprlandEventSocket = struct {
 /// You can read more about the events here:
 /// https://wiki.hyprland.org/IPC/#events-list
 pub const HyprlandEvent = union(enum) {
-    const Self = @This();
+
+    // =========== !IMPORTANT NOTE FOR MAINTAINERS! ===========
+    // Since the `parse` function uses comptime, the order of
+    // the arguments in each event tip matters. The first
+    // declared struct argument will be parsed first, the
+    // second argument will be parsed second, and etc...
+    //
+    // So the declaration
+    // event: struct {
+    //   arg1: []const u8,
+    //   arg2: []const u8,
+    // }
+    // is different from
+    // event: struct {
+    //   arg2: []const u8,
+    //   arg1: []const u8,
+    // }
+    // ========================================================
 
     /// emitted on workspace change. Is emitted ONLY when a user
     /// requests a workspace change, and is not emitted on mouse
@@ -374,20 +395,23 @@ pub const HyprlandEvent = union(enum) {
         }
     };
 
-    /// Try to parse event from the given string. The returned event object will have
-    /// a lifetime equal to the provided string. The returned object does **not** have to
-    /// be deinit-ed.
-    pub fn parse(line: []const u8, diagnostics: ?*ParseDiagnostics) ParseErrorSet!Self {
+    /// Try to parse an event from the given string. If the `diagnostics` argument is not
+    /// null, will populate it with contextual information in case an error occurs.
+    ///
+    /// The parsed event and the diagnostics object have the same lifetime as the
+    /// `line` argument's slice. They are both invalidated if the line also is.
+    pub fn parse(line: []const u8, diagnostics: ?*ParseDiagnostics) ParseErrorSet!@This() {
         var dummyDiags: ParseDiagnostics = undefined;
         const diags = diagnostics orelse &dummyDiags;
+        // Resets the diagnostics object. Required if the user didn't initialize it.
+        diags.* = .{ .line = line };
 
-        diags.line = line;
         var iter = std.mem.splitSequence(u8, line, ">>");
         const commandName = iter.next() orelse return error.MissingCommandName;
         diags.command = commandName;
         var paramsIter = ParamsIterator.init(iter.next() orelse "", diags);
 
-        // Check for this is separate from the others because of the unique
+        // Check for this event is separate from the others because of the unique
         // windowAddress type, which is difficult to handle in comptime.
         if (std.mem.eql(u8, commandName, "togglegroup")) {
             return .{ .togglegroup = .{
@@ -409,41 +433,52 @@ pub const HyprlandEvent = union(enum) {
         // }
         // ```
         const allEventFields = @typeInfo(@This()).@"union".fields;
-        inline for (allEventFields) |field| {
-            if (std.mem.eql(u8, field.name, commandName)) {
-                switch (@typeInfo(field.type)) {
-                    .bool => return @unionInit(Self, field.name, try paramsIter.nextBool()),
-                    .int => return @unionInit(Self, field.name, try paramsIter.nextInt()),
-                    .pointer => return @unionInit(Self, field.name, try paramsIter.next()),
+        inline for (allEventFields) |evField| {
+            if (std.mem.eql(u8, evField.name, commandName)) {
+                const command = evField.name;
+                const initVal: evField.type = initVal: switch (@typeInfo(evField.type)) {
+                    .bool => try paramsIter.nextBool(),
+                    .int => try paramsIter.nextInt(),
+                    // Assume its a []const u8
+                    .pointer => try paramsIter.next(),
+                    // Assume this is an integer enum that starts at 0 and have no gaps.
                     .@"enum" => |e| {
-                        // Assume this is an integer enum that starts at 0 and have no gaps.
                         const int = try paramsIter.nextInt();
                         if (int >= e.fields.len) return error.InvalidBoolean;
-                        return @unionInit(Self, field.name, @enumFromInt(int));
+                        break :initVal @enumFromInt(int);
                     },
-                    .@"struct" => |structType| {
-                        var event: field.type = undefined;
-                        inline for (structType.fields) |innerField| {
-                            switch (@typeInfo(innerField.type)) {
-                                .bool => @field(event, innerField.name) = try paramsIter.nextBool(),
-                                .int => @field(event, innerField.name) = try paramsIter.nextInt(),
-                                .pointer => @field(event, innerField.name) = try paramsIter.next(),
-                                .@"enum" => |e| {
-                                    // Assume this is an integer enum that starts at 0
-                                    // and have no gaps.
-                                    const int = try paramsIter.nextInt();
-                                    if (int >= e.fields.len) return error.InvalidBoolean;
-                                    @field(event, innerField.name) = @enumFromInt(int);
-                                },
-                                else => unreachable,
-                            }
-                        }
-                        return @unionInit(Self, field.name, event);
-                    },
+                    .@"struct" => try parseInnerStruct(evField.type, &paramsIter),
                     else => unreachable,
-                }
+                };
+                return @unionInit(@This(), command, initVal);
             }
         }
         return error.UnknownCommand;
+    }
+
+    /// Helper recursive function to parse inner structs.
+    pub fn parseInnerStruct(stru: type, paramsIter: *ParamsIterator) ParseErrorSet!stru {
+        var obj: stru = undefined;
+        inline for (@typeInfo(stru).@"struct".fields) |field| {
+            switch (@typeInfo(field.type)) {
+                .bool => @field(obj, field.name) = try paramsIter.nextBool(),
+                .int => @field(obj, field.name) = try paramsIter.nextInt(),
+                // Assume its a []const u8
+                .pointer => @field(obj, field.name) = try paramsIter.next(),
+                // Assume this is an integer enum that starts at 0
+                // and have no gaps.
+                .@"enum" => |e| {
+                    const int = try paramsIter.nextInt();
+                    if (int >= e.fields.len) return error.InvalidBoolean;
+                    @field(obj, field.name) = @enumFromInt(int);
+                },
+                .@"struct" => @field(obj, field.name) = try parseInnerStruct(
+                    field.type,
+                    paramsIter,
+                ),
+                else => unreachable,
+            }
+        }
+        return obj;
     }
 };
