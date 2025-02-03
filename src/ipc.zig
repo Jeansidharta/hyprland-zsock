@@ -1,705 +1,282 @@
 const std = @import("std");
 const utils = @import("./utils.zig");
+const IpcResult = @import("./request-response.zig").IpcResult;
+const IpcResponse = @import("./request-response.zig").IpcResponse;
 
-const Self = @This();
+const Allocator = std.mem.Allocator;
 
-addr: std.os.linux.sockaddr.un,
-
-pub fn init() !Self {
-    return .{
-        .addr = try utils.makeSocketAddr(.ipcSocket),
-    };
+/// Given a string, write it all into the given socket.
+fn socketWriteAll(socket: std.posix.socket_t, message: []const u8) !void {
+    var bytesSent: usize = 0;
+    while (bytesSent < message.len) {
+        bytesSent += try std.posix.write(socket, message);
+    }
 }
 
-fn connect(self: Self) !std.posix.socket_t {
-    const socket = try utils.makeSocket();
-    errdefer std.posix.close(socket);
+/// Read everything from the socket into an allocated slice. Returns when
+/// the socket reads 0 bytes
+fn socketReadAll(socket: std.posix.socket_t, alloc: Allocator) ![]u8 {
+    const allocStep = 1024;
+    var buffer: []u8 = try alloc.alloc(u8, allocStep);
+    var totalBytesRead: usize = 0;
+    while (true) {
+        const bytesRead = try std.posix.read(socket, buffer[totalBytesRead..]);
+        totalBytesRead += bytesRead;
 
-    try std.posix.connect(socket, @ptrCast(&self.addr), @sizeOf(std.os.linux.sockaddr.un));
-    return socket;
+        if (bytesRead == 0) break;
+
+        const isBufferFull = totalBytesRead == buffer.len;
+        if (isBufferFull) {
+            const newBufLen = buffer.len + allocStep;
+            buffer = try alloc.realloc(buffer, newBufLen);
+        }
+    }
+    _ = alloc.resize(buffer, totalBytesRead);
+    buffer = buffer[0..totalBytesRead];
+    return buffer;
 }
 
-pub const CommandTag = enum {
-    // ---------- Commands ----------
-    /// Issue a dispatch to call a keybind dispatcher with an argument.
-    dispatch,
-    keyword,
-    reload,
-    kill,
-    setcursor,
-    output,
-    switchxkblayout,
-    seterror,
-    notify,
-    dismissnotify,
-    batch,
-    //  ---------- Info ----------
-    version,
-    monitors,
-    workspaces,
-    activeworkspace,
-    workspacerules,
-    clients,
-    devices,
-    decorations,
-    binds,
-    activewindow,
-    layers,
-    splash,
-    getoption,
-    cursorpos,
-    animations,
-    instances,
-    layouts,
-    configerrors,
-    rollinglog,
-    locked,
-    descriptions,
-    submap,
-    systeminfo,
-    globalshortcuts,
-};
+/// Object used to send IPC requests.
+pub const HyprlandIPC = struct {
+    pub const Command = @import("./request-response.zig").Command;
 
-/// All possible commands that can be sent to the Hyprland ipc socket.
-/// https://wiki.hyprland.org/Configuring/Using-hyprctl/
-pub const Command = union(CommandTag) {
-    // TODO - make this a tagged union with all possible dispatchers.
+    addr: std.os.linux.sockaddr.un,
+    alloc: Allocator,
+
+    pub fn init(alloc: Allocator) !@This() {
+        return .{
+            .alloc = alloc,
+            .addr = try utils.makeSocketAddr(.ipcSocket),
+        };
+    }
+
+    // ============================ HYPRLAND COMMANDS ============================
+    // | A command is characterized by doing an action and returning either "Ok" |
+    // | or an error message. The following functions are all possible commands  |
+    // | that can be sent to Hyprland.                                           |
+    // ===========================================================================
+
     /// Issue a dispatch to call a keybind dispatcher with an argument.
-    dispatch: []const u8,
+    pub fn sendDispatch(self: @This(), req: Command.Dispatch) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
+
     /// issue a keyword to call a config keyword dynamically.
-    keyword: struct { key: []const u8, value: []const u8 },
-    reload,
-    /// Issue a kill to get into a kill mode, where you can kill
-    /// an app by clicking on it. You can exit it with ESCAPE.
-    kill,
+    pub fn sendKeyword(self: @This(), req: Command.Keyword) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
+
     /// Sets the cursor theme and reloads the cursor manager.
     /// Will set the theme for everything except GTK, because GTK.
-    setcursor: struct { theme: []const u8, size: u32 },
+    pub fn sendSetCursor(self: @This(), req: Command.SetCursor) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
+
     /// Allows you to add and remove fake outputs to your preferred backend.
-    output: union(enum) {
-        create: struct {
-            /// The name of the backend
-            backend: union(enum) {
-                /// Creates an output as a Wayland window. This will only work if
-                /// you’re already running Hyprland with the Wayland backend.
-                wayland,
-                /// Creates a headless monitor output. If you’re running a
-                /// VNC/RDP/Sunshine server, you should use this.
-                headless,
-                /// Picks a backend for you. For example, if you’re running Hyprland
-                /// from the TTY, headless will be chosen.
-                auto,
-                /// Available in case a new backend is added and this library goes out of date.
-                custom: []const u8,
-            },
-            /// Optional name for the output. If (name) is not specified,
-            /// the default naming scheme will be used (HEADLESS-2, WL-1, etc.)
-            name: ?[]const u8 = null,
-        },
-        remove: struct { name: []const u8 },
-    },
+    pub fn sendOutput(self: @This(), req: Command.Output) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
     /// Sets the xkb layout index for a keyboard.
-    switchxkblayout: struct {
-        device: union(enum) {
-            /// The main keyboard from devices.
-            current,
-            /// Affect all devices
-            all,
-            /// Choose a device with a matching name. Names can be
-            /// listed with `hyprctl devices` command.
-            name: []const u8,
-        },
-        cmd: union(enum) {
-            next,
-            prev,
-            id: []const u8,
-        },
-    },
+    pub fn sendSwitchXkbLayout(self: @This(), req: Command.SwitchXkbLayout) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
     /// Sets the hyprctl error string. Will reset when Hyprland’s config is reloaded.
-    seterror: union(enum) {
-        set: struct { rgba: u32, message: []const u8 },
-        disable,
-    },
+    pub fn sendSetError(self: @This(), req: Command.SetError) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
     /// Sends a notification using the built-in Hyprland notification system.
-    notify: struct {
-        icon: enum(i8) {
-            NONE = -1,
-            WARNING = 0,
-            INFO = 1,
-            HINT = 2,
-            ERROR = 3,
-            CONFUSED = 4,
-            OK = 5,
-        } = .INFO,
-        time_ms: u32,
-        color: union(enum) { default, rgba: u32 } = .default,
-        fontSize: ?u32 = null,
-        message: []const u8,
-    },
-    /// Dismisses all or up to AMOUNT notifications.
-    dismissnotify: ?u32,
-    /// Use to specify a batch of commands to execute.
-    batch: []const Command,
-    /// Prints the Hyprland version along with flags, commit and branch of build.
-    version,
+    pub fn sendNotify(self: @This(), req: Command.Notify) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
+
+    /// Dismiss all up to AMMOUNT notifications
+    pub fn sendDismissNotify(self: @This(), req: Command.DismissNotify) !IpcResult {
+        return self.sendAnyCommand(req);
+    }
+
+    // ======================== HYPRLAND INFO REQUEST ============================
+    // | An info request will not modify any state in Hyprland, only report the  |
+    // | current state. Most info request functions take no arguments, and they  |
+    // | all return a json object that contains the requested info.              |
+    // ===========================================================================
+
+    // Gets the Hyprland version, along with flags, commit and branch of build
+    pub fn requestVersion(self: @This()) !IpcResponse(Command.Version.Response) {
+        return self.sendRequest(Command.Version.Response, "j/version");
+    }
     /// Lists active outputs with their properties, 'monitors all' lists active and inactive outputs
-    monitors,
+    pub fn requestMonitors(self: @This()) !IpcResponse(Command.Monitors.Response) {
+        return self.sendRequest(Command.Monitors.Response, "j/monitors");
+    }
     /// Lists all workspaces with their properties
-    workspaces,
+    pub fn requestWorkspaces(self: @This()) !IpcResponse(Command.Workspaces.Response) {
+        return self.sendRequest(Command.Workspaces.Response, "j/workspaces");
+    }
     /// Gets the active workspace and its properties
-    activeworkspace,
+    pub fn requestActiveWorkspace(self: @This()) !IpcResponse(Command.ActiveWorkspace.Response) {
+        return self.sendRequest(Command.ActiveWorkspace.Response, "j/activeworkspace");
+    }
     /// Gets the list of defined workspace rules
-    workspacerules,
+    pub fn requestWorkspacerules(self: @This()) !IpcResponse(Command.Workspacerules.Response) {
+        return self.sendRequest(Command.Workspacerules.Response, "j/workspacerules");
+    }
     /// Lists all windows with their properties
-    clients,
+    pub fn requestClients(self: @This()) !IpcResponse(Command.Clients.Response) {
+        return self.sendRequest(Command.Clients.Response, "j/clients");
+    }
     /// Lists all connected keyboards and mice
-    devices,
+    pub fn requestDevices(self: @This()) !IpcResponse(Command.Devices.Response) {
+        return self.sendRequest(Command.Devices.Response, "j/devices");
+    }
+    // TODO - Hyprland currently does not return valid json
+    // TODO - This has to take and argument
     /// Lists all decorations and their info
-    decorations,
+    pub fn requestDecorations(self: @This()) !IpcResponse(Command.Decorations.Response) {
+        return self.sendRequest(Command.Decorations.Response, "j/decorations");
+    }
     /// Lists all registered binds
-    binds,
+    pub fn requestBinds(self: @This()) !IpcResponse(Command.Binds.Response) {
+        return self.sendRequest(Command.Binds.Response, "j/binds");
+    }
     /// Gets the active window name and its properties
-    activewindow,
+    pub fn requestActiveWindow(self: @This()) !IpcResponse(Command.ActiveWindow.Response) {
+        return self.sendRequest(Command.ActiveWindow.Response, "j/activewindow");
+    }
     /// Lists all the layers
-    layers,
-    /// Prints the current random splash
-    splash,
+    pub fn requestLayers(self: @This()) !IpcResponse(Command.Layers.Response) {
+        return self.sendRequest(Command.Layers.Response, "j/layers");
+    }
+    // The splash info request does not return json, even when requested. So it cannot use
+    // the `sendRequest` function, like most of the other info request functions
+    /// Gets the current random splash
+    pub fn requestSplash(self: @This()) !IpcResponse(Command.Splash.Response) {
+        var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
+        const alloc = arenaAllocator.allocator();
+        const rawResponse = try self.sendRawRequest("splash", alloc);
+        return .{
+            .alloc = arenaAllocator,
+            .rawResponse = rawResponse,
+            .parsed = rawResponse,
+        };
+    }
+
+    // TODO - actually parse the response
     /// Gets the config option status (values)
-    getoption,
+    pub fn requestGetoption(self: @This(), req: Command.GetOption) !IpcResponse(Command.GetOption.Response) {
+        const requestString = req.makeRequestString(self.alloc);
+        defer self.alloc.free(requestString);
+        return self.sendRequest(Command.GetOption.Response, requestString);
+    }
     /// Gets the current cursor position in global layout coordinates
-    cursorpos,
+    pub fn requestCursorPos(self: @This()) !IpcResponse(Command.CursorPos.Response) {
+        return self.sendRequest(Command.CursorPos.Response, "j/cursorpos");
+    }
     /// Gets the currently configured info about animations and beziers
-    animations,
+    pub fn requestAnimations(self: @This()) !IpcResponse(Command.Animations.Response) {
+        return self.sendRequest(Command.Animations.Response, "j/animations");
+    }
     /// Lists all running instances of Hyprland with their info
-    instances,
+    pub fn requestInstances(self: @This()) !IpcResponse(Command.Instances.Response) {
+        return self.sendRequest(Command.Instances.Response, "j/instances");
+    }
     /// Lists all layouts available (including from plugins)
-    layouts,
+    pub fn requestLayouts(self: @This()) !IpcResponse(Command.Layouts.Response) {
+        return self.sendRequest(Command.Layouts.Response, "j/layouts");
+    }
     /// Lists all current config parsing errors
-    configerrors,
-    /// Prints tail of the log. Also supports -f/--follow option
-    rollinglog,
+    pub fn requestConfigErrors(self: @This()) !IpcResponse(Command.ConfigErrors.Response) {
+        return self.sendRequest(Command.ConfigErrors.Response, "j/layouts");
+    }
+    /// Prints tail of the log.
+    pub fn requestRollingLog(self: @This()) !IpcResponse(Command.RollingLog.Response) {
+        return self.sendRequest(Command.RollingLog.Response, "j/rollinglog");
+    }
     /// Prints whether the current session is locked.
-    locked,
-    /// Returns a JSON with all config options, their descriptions and types.
-    descriptions,
+    pub fn requestLocked(self: @This()) !IpcResponse(Command.Locked.Response) {
+        return self.sendRequest(Command.Locked.Response, "j/locked");
+    }
+    /// Returns all config options, their descriptions and types.
+    pub fn requestDescriptions(self: @This()) !IpcResponse(Command.Descriptions.Response) {
+        return self.sendRequest(Command.Descriptions.Response, "j/descriptions");
+    }
     /// Prints the current submap the keybinds are in
-    submap,
+    pub fn requestSubmap(self: @This()) !IpcResponse(Command.Submap.Response) {
+        return self.sendRequest(Command.Submap.Response, "j/submap");
+    }
     /// List system info
-    systeminfo,
+    pub fn requestSystemInfo(self: @This()) !IpcResponse(Command.SystemInfo.Response) {
+        return self.sendRequest(Command.SystemInfo.Response, "j/systeminfo");
+    }
     /// List all global shortcuts
-    globalshortcuts,
-
-    pub fn name(self: Command) []const u8 {
-        return @tagName(self);
+    pub fn requestGlobalShortcuts(self: @This()) !IpcResponse(Command.GlobalShortcuts.Response) {
+        return self.sendRequest(Command.GlobalShortcuts.Response, "j/globalshortcuts");
     }
 
-    pub fn format(
-        self: @This(),
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        const commandName = @tagName(self);
-        try writer.writeByte('/');
-        try writer.writeAll(commandName);
-        switch (self) {
-            .dispatch => |data| {
-                try writer.writeByte(' ');
-                try writer.writeAll(data);
-            },
-            .keyword => |keyword| {
-                try writer.writeByte(' ');
-                try writer.writeAll(keyword.key);
-                try writer.writeByte(' ');
-                try writer.writeAll(keyword.value);
-            },
-            .setcursor => |setcursor| {
-                try writer.writeByte(' ');
-                try writer.writeAll(setcursor.theme);
-                try writer.writeByte(' ');
-                try std.fmt.format(writer, "{}", .{setcursor.size});
-            },
-            .output => |output| {
-                try writer.writeByte(' ');
-                switch (output) {
-                    .create => |create| {
-                        try writer.writeAll("create");
-                        try writer.writeAll(switch (create.backend) {
-                            .wayland => "wayland",
-                            .headless => "headless",
-                            .auto => "auto",
-                            .custom => |custom| custom,
-                        });
-                        if (create.name) |createName| {
-                            try writer.writeByte(' ');
-                            try writer.writeAll(createName);
-                        }
-                    },
-                    .remove => |remove| {
-                        try writer.writeAll("remove");
-                        try writer.writeAll(remove.name);
-                    },
-                }
-            },
-            .switchxkblayout => |switchxkblayout| {
-                try writer.writeByte(' ');
-                try writer.writeAll(switch (switchxkblayout.device) {
-                    .current => "current",
-                    .all => "next",
-                    .name => |deviceName| deviceName,
-                });
-                try writer.writeByte(' ');
-                try writer.writeAll(switch (switchxkblayout.cmd) {
-                    .next => "next",
-                    .prev => "prev",
-                    .id => |id| id,
-                });
-            },
-            .seterror => |seterror| {
-                try writer.writeByte(' ');
-                switch (seterror) {
-                    .disable => try writer.writeAll("disable"),
-                    .set => |set| {
-                        try std.fmt.format(writer, "rgba({x:08}) ", .{set.rgba});
-                        try writer.writeAll(set.message);
-                    },
-                }
-            },
-            .notify => |notify| {
-                try writer.writeByte(' ');
-                try std.fmt.format(writer, "{d} {} ", .{ @intFromEnum(notify.icon), notify.time_ms });
-                switch (notify.color) {
-                    .default => try writer.writeByte('0'),
-                    .rgba => |rgba| try std.fmt.format(writer, "rgba({x:08})", .{rgba}),
-                }
-                try writer.writeByte(' ');
-                if (notify.fontSize) |fontSize| {
-                    try std.fmt.format(writer, "fontsize:{d} ", .{fontSize});
-                }
-                try writer.writeAll(notify.message);
-            },
-            .dismissnotify => |dismissnotify| {
-                if (dismissnotify) |ammount| {
-                    try writer.writeByte(' ');
-                    try std.fmt.format(writer, "{d}", .{ammount});
-                }
-            },
-            .batch => |batch| {
-                try writer.writeByte(' ');
-                for (batch, 0..) |command, index| {
-                    try std.fmt.format(writer, "{any}", .{command});
+    // ======================== UTILITY FUNCTIONS ================================
+    // | From this point downwards, there are only utility functions not really  |
+    // | intended for users.                                                     |
+    // ===========================================================================
 
-                    const isLastCommand = index != batch.len - 1;
-                    if (!isLastCommand) {
-                        try writer.writeAll(" ; ");
-                    }
-                }
-            },
-            else => return,
-        }
-    }
-};
+    fn sendRawRequest(self: *const @This(), request: []const u8, alloc: Allocator) ![]const u8 {
+        const socket = try self.connect();
+        defer std.posix.close(socket);
 
-pub const CommandResponseVariant = union(CommandTag) {
-    const ActionResult = union(enum) {
-        Ok,
-        Err: []const u8,
-
-        pub fn format(
-            self: @This(),
-            comptime _: []const u8,
-            _: std.fmt.FormatOptions,
-            writer: anytype,
-        ) !void {
-            switch (self) {
-                .Ok => try writer.writeAll("Ok"),
-                .Err => |message| {
-                    try writer.writeAll("Error: ");
-                    try writer.writeAll(message);
-                },
-            }
-        }
-    };
-    // ---------- Commands ----------
-    dispatch: ActionResult,
-    keyword: ActionResult,
-    reload: ActionResult,
-    kill: ActionResult,
-    setcursor: ActionResult,
-    output: ActionResult,
-    switchxkblayout: ActionResult,
-    seterror: ActionResult,
-    notify: ActionResult,
-    dismissnotify: ActionResult,
-    // TODO - batch action has to get multiple responses
-    batch: ActionResult,
-    //  ---------- Info ----------
-    version: struct {
-        branch: []const u8,
-        commit: []const u8,
-        version: []const u8,
-        dirty: bool,
-        commit_message: []const u8,
-        commit_date: []const u8,
-        tag: []const u8,
-        commits: []const u8,
-        buildAquamarine: []const u8,
-        flags: []const []const u8,
-    },
-    monitors: []const struct {
-        id: u32,
-        name: []const u8,
-        description: []const u8,
-        make: []const u8,
-        model: []const u8,
-        serial: []const u8,
-        width: u32,
-        height: u32,
-        refreshRate: f32,
-        x: i32,
-        y: i32,
-        activeWorkspace: struct {
-            id: u32,
-            name: []const u8,
-        },
-        specialWorkspace: struct {
-            id: u32,
-            name: []const u8,
-        },
-        reserved: struct { u32, u32, u32, u32 },
-        scale: f32,
-        transform: u32,
-        focused: bool,
-        dpmsStatus: bool,
-        vrr: bool,
-        solitary: []const u8,
-        activelyTearing: bool,
-        disabled: bool,
-        currentFormat: []const u8,
-        mirrorOf: []const u8,
-        availableModes: []const []const u8,
-    },
-    workspaces: []const struct {
-        id: u32,
-        name: []const u8,
-        monitor: []const u8,
-        monitorID: u32,
-        windows: u32,
-        hasfullscreen: bool,
-        lastwindow: []const u8,
-        lastwindowtitle: []const u8,
-    },
-    activeworkspace: struct {
-        id: u32,
-        name: []const u8,
-        monitor: []const u8,
-        monitorID: u32,
-        windows: u32,
-        hasfullscreen: bool,
-        lastwindow: []const u8,
-        lastwindowtitle: []const u8,
-    },
-    // TODO - find a shape for this
-    workspacerules: []const struct {},
-    clients: []const struct {
-        address: []const u8,
-        mapped: bool,
-        hidden: bool,
-        at: struct { u32, u32 },
-        size: struct { u32, u32 },
-        workspace: struct {
-            id: u32,
-            name: []const u8,
-        },
-        floating: bool,
-        pseudo: bool,
-        monitor: u32,
-        class: []const u8,
-        title: []const u8,
-        initialClass: []const u8,
-        initialTitle: []const u8,
-        pid: u32,
-        xwayland: bool,
-        pinned: bool,
-        fullscreen: u32,
-        fullscreenClient: u32,
-        // TODO - find the shape for this
-        grouped: []const struct {},
-        // TODO - find the shape for this
-        tags: []const struct {},
-        swallowing: []const u8,
-        focusHistoryID: u32,
-    },
-    devices: struct {
-        mice: []const struct {
-            address: []const u8,
-            name: []const u8,
-            defaultSpeed: f32,
-        },
-        keyboards: []const struct {
-            address: []const u8,
-            name: []const u8,
-            rules: []const u8,
-            model: []const u8,
-            layout: []const u8,
-            variant: []const u8,
-            options: []const u8,
-            active_keymap: []const u8,
-            capsLock: bool,
-            numLock: bool,
-            main: bool,
-        },
-        // TODO - find out the shape of this
-        tablets: []const struct {},
-        touch: []const struct {},
-        switches: []const struct { address: []const u8, name: []const u8 },
-    },
-    // TODO - Hyprland currently does not return valid json
-    decorations,
-    binds: []const struct {
-        locked: bool,
-        mouse: bool,
-        release: bool,
-        repeat: bool,
-        non_consuming: bool,
-        has_description: bool,
-        modmask: u32,
-        submap: []const u8,
-        key: []const u8,
-        keycode: u32,
-        catch_all: bool,
-        description: []const u8,
-        dispatcher: []const u8,
-        arg: []const u8,
-    },
-    activewindow: struct {
-        address: []const u8,
-        mapped: bool,
-        hidden: bool,
-        at: struct { i32, i32 },
-        size: struct { i32, i32 },
-        workspace: struct {
-            id: i32,
-            name: []const u8,
-        },
-        floating: bool,
-        pseudo: bool,
-        monitor: u32,
-        class: []const u8,
-        title: []const u8,
-        initialClass: []const u8,
-        initialTitle: []const u8,
-        pid: u32,
-        xwayland: bool,
-        pinned: bool,
-        fullscreen: u8,
-        fullscreenClient: u8,
-        // TODO - figure out whats the shape of this
-        grouped: []const struct {},
-        // TODO - figure out whats the shape of this
-        tags: []const struct {},
-        swallowing: []const u8,
-        focusHistoryID: u32,
-    },
-    layers: std.json.ArrayHashMap(struct {
-        levels: std.json.ArrayHashMap(
-            []const struct {
-                address: []const u8,
-                x: i32,
-                y: i32,
-                w: u32,
-                h: u32,
-                namespace: []const u8,
-            },
-        ),
-    }),
-    // TODO - Hyprland currently does not return json data
-    splash,
-    // TODO - find shape for this
-    getoption,
-    cursorpos: struct { x: u32, y: u32 },
-    // TODO - find shape for this
-    animations,
-    instances: []const struct {
-        instance: []const u8,
-        time: u64,
-        pid: u32,
-        wl_socket: []const u8,
-    },
-    layouts: []const []const u8,
-    configerrors: []const []const u8,
-    // TODO - Hyprland currently does not return valid json
-    rollinglog,
-    locked: struct { locked: bool },
-    // TODO - Hyprland currently does not return valid json
-    descriptions,
-    // TODO - Hyprland currently does not return valid json
-    submap,
-    // TODO - currently Hyprland does not return valid json
-    systeminfo,
-    globalshortcuts: []const struct {},
-};
-
-fn writerFn(socket: std.posix.socket_t, bytes: []const u8) !usize {
-    var bytesWritten: usize = 0;
-    while (bytesWritten < bytes.len) {
-        bytesWritten += try std.posix.write(socket, bytes[bytesWritten..]);
-    }
-    return bytesWritten;
-}
-
-pub fn CommandResponse(comptime tagType: CommandTag) type {
-    return struct {
-        const VariantType = @FieldType(CommandResponseVariant, @tagName(tagType));
-
-        variant: VariantType,
-        rawResponse: []const u8,
-        arenaAllocator: std.heap.ArenaAllocator,
-
-        /// Takes ownership of the allocator and the rawResponse buffer
-        fn init(
-            arena: std.heap.ArenaAllocator,
-            variant: VariantType,
-            rawResponse: []const u8,
-        ) @This() {
-            return .{
-                .variant = variant,
-                .arenaAllocator = arena,
-                .rawResponse = rawResponse,
-            };
-        }
-
-        pub fn deinit(self: @This()) void {
-            self.arenaAllocator.deinit();
-        }
-    };
-}
-
-pub fn sendCommand(
-    self: *Self,
-    argAlloc: std.mem.Allocator,
-    comptime commandTag: CommandTag,
-    commandPayload: @FieldType(Command, @tagName(commandTag)),
-) !CommandResponse(commandTag) {
-    const CommandResponseType = CommandResponse(commandTag);
-
-    const socket = try self.connect();
-    defer std.posix.close(socket);
-
-    var arena = std.heap.ArenaAllocator.init(argAlloc);
-    const alloc = arena.allocator();
-
-    // Writes the command to the socket.
-    {
-        // Note: We could avoid this allocation by writing the data directly to the socket,
-        // but Hyprland does not seem to handle partial writes very well. Therefore, we
-        // must allocate the whole command onto a buffer that will be sent all at once.
-        const line = try std.fmt.allocPrint(alloc, "j{any}\x00", .{@unionInit(Command, @tagName(commandTag), commandPayload)});
-        defer alloc.free(line);
-        var bytesSent: usize = 0;
-        while (bytesSent < line.len) {
-            bytesSent += try std.posix.write(socket, line[bytesSent..]);
-        }
+        try socketWriteAll(socket, request);
+        return try socketReadAll(socket, alloc);
     }
 
-    const rawResponse = rawResponse: {
-        const allocStep = 1024;
-        var buffer: []u8 = try alloc.alloc(u8, allocStep);
-        var totalBytesRead: usize = 0;
-        while (true) {
-            const bytesRead = try std.posix.read(socket, buffer[totalBytesRead..]);
-            totalBytesRead += bytesRead;
-
-            if (bytesRead == 0) break;
-
-            const isBufferFull = totalBytesRead == buffer.len;
-            if (isBufferFull) {
-                const newBufLen = buffer.len + allocStep;
-                buffer = try alloc.realloc(buffer, newBufLen);
-            }
-        }
-        _ = alloc.resize(buffer, totalBytesRead);
-        buffer = buffer[0..totalBytesRead];
-        break :rawResponse buffer;
-    };
-
-    if (CommandResponseType.VariantType == CommandResponseVariant.ActionResult) {
-        if (std.mem.eql(u8, rawResponse, "ok")) {
-            return CommandResponseType.init(arena, .Ok, rawResponse);
-        } else {
-            return CommandResponseType.init(arena, .{ .Err = rawResponse }, rawResponse);
-        }
-    }
-    return CommandResponseType.init(
-        arena,
-        std.json.parseFromSliceLeaky(
-            CommandResponseType.VariantType,
+    pub fn sendRequest(self: *const @This(), ResponseType: type, request: []const u8) !IpcResponse(ResponseType) {
+        var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
+        const alloc = arenaAllocator.allocator();
+        const rawResponse = try self.sendRawRequest(request, alloc);
+        const parsed = try std.json.parseFromSliceLeaky(
+            ResponseType,
             alloc,
             rawResponse,
             .{ .allocate = .alloc_if_needed },
-        ) catch |e| {
-            if (e == error.UnknownField) {
-                std.log.warn(
-                    "For command {s}\nUnknown field while parsing the following json:\n{s}",
-                    .{ @tagName(commandTag), rawResponse },
-                );
-            }
-            return e;
-        },
-        rawResponse,
-    );
-}
+        );
+        return .{
+            .alloc = arenaAllocator,
+            .rawResponse = rawResponse,
+            .parsed = parsed,
+        };
+    }
+
+    fn sendRawCommand(self: *const @This(), request: []const u8) !IpcResult {
+        const response = try self.sendRawRequest(request, self.alloc);
+
+        if (std.mem.eql(u8, response, "ok")) {
+            self.alloc.free(response);
+            return .Ok;
+        } else return .{ .Err = .{
+            .message = response,
+            .alloc = self.alloc,
+        } };
+    }
+
+    fn sendAnyCommand(self: @This(), request: anytype) !IpcResult {
+        if (!std.meta.hasMethod(@TypeOf(request), "makeRequestString")) {
+            @compileError("IPC command request must implement makeRequestString");
+        }
+        const requestString = try request.makeRequestString(self.alloc);
+        defer self.alloc.free(requestString);
+        return self.sendRawCommand(requestString);
+    }
+
+    fn connect(self: @This()) !std.posix.socket_t {
+        const socket = try utils.makeSocket();
+        errdefer std.posix.close(socket);
+
+        try std.posix.connect(socket, @ptrCast(&self.addr), @sizeOf(std.os.linux.sockaddr.un));
+        return socket;
+    }
+};
 
 // Test wether we can parse the response from all commands.
 // Will call `hyprctl <COMMAND>` replacing <COMMAND> with each one of our commands in `CommandTag`
 test "Hyprland integration json data format" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-
-    fields_loop: inline for (@typeInfo(CommandResponseVariant).@"union".fields) |field| {
-        // These commands are still not implemented. They should not be tested.
-        if (field.type == void) {
-            std.log.warn("Field {s} is empty. Skipping...", .{field.name});
-            continue;
-        }
-        if (field.type == []const struct {}) {
-            std.log.warn("Field {s} has no structure. Skipping...", .{field.name});
-            continue;
-        }
-        // What commands to skip integration testing.
-        // These commands require arguments, and therefore should be tested somewhere else.
-        const commandFields: []const CommandTag = &.{
-            .dispatch,
-            .keyword,
-            .reload,
-            .kill,
-            .setcursor,
-            .output,
-            .switchxkblayout,
-            .seterror,
-            .notify,
-            .dismissnotify,
-            .batch,
-        };
-        comptime for (commandFields) |commandField| {
-            if (std.mem.eql(u8, @tagName(commandField), field.name)) {
-                continue :fields_loop;
-            }
-        };
-        const name = field.name;
-        var child = std.process.Child.init(&.{ "hyprctl", "-j", name }, alloc);
-        child.stdout_behavior = .Pipe;
-        try child.spawn();
-        const data = try child.stdout.?.readToEndAlloc(alloc, 8 * 1024 * 1028);
-        defer alloc.free(data);
-        _ = try child.kill();
-        const json = std.json.parseFromSlice(@FieldType(CommandResponseVariant, name), alloc, data, .{}) catch |e| {
-            std.log.err("Problem parsing command {s}. Error is {any}. Returned data is {s}", .{ name, e, data });
-            return e;
-        };
-        std.log.warn("Command {s} passed", .{name});
-        defer json.deinit();
-    }
 
     std.log.warn("GPA deinit result: {any}", .{gpa.deinit()});
 }

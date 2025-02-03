@@ -437,6 +437,7 @@ pub const HyprlandEvent = union(enum) {
             if (std.mem.eql(u8, evField.name, commandName)) {
                 const command = evField.name;
                 const initVal: evField.type = initVal: switch (@typeInfo(evField.type)) {
+                    .void => void{},
                     .bool => try paramsIter.nextBool(),
                     .int => try paramsIter.nextInt(),
                     // Assume its a []const u8
@@ -461,6 +462,7 @@ pub const HyprlandEvent = union(enum) {
         var obj: stru = undefined;
         inline for (@typeInfo(stru).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
+                .void => void{},
                 .bool => @field(obj, field.name) = try paramsIter.nextBool(),
                 .int => @field(obj, field.name) = try paramsIter.nextInt(),
                 // Assume its a []const u8

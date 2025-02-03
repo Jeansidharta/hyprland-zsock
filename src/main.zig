@@ -3,14 +3,13 @@ const HyprlandIPC = @import("./ipc.zig");
 const HyprlandEvents = @import("./events.zig").HyprlandEventSocket;
 
 pub fn main() !void {
-    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // const alloc = gpa.allocator();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const alloc = gpa.allocator();
 
-    var socket = try HyprlandEvents.init();
-    while (true) {
-        const event = try socket.consumeEvent(null);
-        std.debug.print("{}\n", .{event});
-    }
+    var ipc = try HyprlandIPC.HyprlandIPC.init(alloc);
+    const response = try ipc.sendMonitors();
+    std.log.debug("{any}\n", .{response});
+    defer response.deinit();
 }
 
 test {
