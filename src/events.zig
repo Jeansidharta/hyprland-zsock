@@ -4,16 +4,75 @@ const utils = @import("./utils.zig");
 const log = std.log.scoped(.HyprlandEvents);
 const Allocator = std.mem.Allocator;
 
+pub const ParseErrorSet = error{
+    /// The event type was expecting more parameters than provided in the string.
+    MissingParams,
+    /// The last read parameter cannot be converted to a boolean
+    InvalidBoolean,
+    /// The last read parameter cannot be converted to an integer
+    InvalidInteger,
+    /// The string parsed does not contain a command.
+    MissingCommandName,
+    /// The command found in the string is not known.
+    UnknownCommand,
+};
+
 /// An object containing important context for a ParseError.
 pub const ParseDiagnostics = struct {
     /// The original line that was bein parsed when the error occurred.
-    line: []const u8,
+    line: ?[]const u8 = null,
+    /// If an error was triggered during parsing, it should end here.
+    err: ?ParseErrorSet = null,
     /// The command that was being parsed. If null, no command was found.
     command: ?[]const u8 = null,
     /// The last argument that was being parsed. If null, no argument was found.
     lastArgumentRead: ?[]const u8 = null,
     /// The number of arguments that were read.
     numberOfArgumentsRead: u8 = 0,
+
+    pub fn setAndTriggerErr(self: *@This(), err: ParseErrorSet) ParseErrorSet {
+        self.err = err;
+        return err;
+    }
+
+    pub fn format(
+        self: @This(),
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        if (self.line == null) {
+            try writer.print("Error reading from socket: {any}", .{self.err});
+        }
+        const line = self.line.?;
+        try writer.print("While parsing line \"{s}\": ", .{line});
+        if (self.err == null) {
+            try writer.writeAll("No errors were found");
+        }
+        const err = self.err.?;
+        switch (err) {
+            error.MissingCommandName => try writer.writeAll("No command was found"),
+            error.UnknownCommand => try writer.print(
+                "Command {s} is unknown",
+                .{self.command.?},
+            ),
+            error.MissingParams => try writer.print(
+                "{} arguments not enough. Need more",
+                .{self.numberOfArgumentsRead},
+            ),
+            error.InvalidInteger => try writer.print(
+                "Argument {s} is expected to be an integer",
+                .{self.lastArgumentRead.?},
+            ),
+            error.InvalidBoolean => try writer.print(
+                "Argument {s} is expected to be 0 or 1",
+                .{self.lastArgumentRead.?},
+            ),
+        }
+    }
 };
 
 /// The main structure to receive events from the Hyprland Event socket.
@@ -347,19 +406,6 @@ pub const HyprlandEvent = union(enum) {
         return std.mem.eql(u8, a, b);
     }
 
-    pub const ParseErrorSet = error{
-        /// The event type was expecting more parameters than provided in the string.
-        MissingParams,
-        /// The last read parameter cannot be converted to a boolean
-        InvalidBoolean,
-        /// The last read parameter cannot be converted to an integer
-        InvalidInteger,
-        /// The string parsed does not contain a command.
-        MissingCommandName,
-        /// The command found in the string is not known.
-        UnknownCommand,
-    };
-
     /// A small wrapper around the default std.mem.SplitIterator for better
     /// ergonomics. Will automatically update the diagnostics object, and
     /// return the proper parsing error.
@@ -373,14 +419,16 @@ pub const HyprlandEvent = union(enum) {
             };
         }
         pub fn next(self: *@This()) ParseErrorSet![]const u8 {
-            const arg = self.innerIter.next() orelse return error.MissingParams;
+            const arg = self.innerIter.next() orelse
+                return self.diagnostics.setAndTriggerErr(error.MissingParams);
             self.diagnostics.lastArgumentRead = arg;
             self.diagnostics.numberOfArgumentsRead += 1;
             return arg;
         }
         pub fn nextInt(self: *@This()) ParseErrorSet!u32 {
             const arg = try self.next();
-            return std.fmt.parseInt(u32, arg, 10) catch return error.InvalidInteger;
+            return std.fmt.parseInt(u32, arg, 10) catch
+                self.diagnostics.setAndTriggerErr(error.InvalidInteger);
         }
         fn parseBoolString(str: []const u8) ParseErrorSet!bool {
             if (strEql(str, "1")) {
@@ -391,7 +439,7 @@ pub const HyprlandEvent = union(enum) {
         }
         pub fn nextBool(self: *@This()) ParseErrorSet!bool {
             const arg = try self.next();
-            return parseBoolString(arg);
+            return parseBoolString(arg) catch |e| self.diagnostics.setAndTriggerErr(e);
         }
     };
 
@@ -407,7 +455,8 @@ pub const HyprlandEvent = union(enum) {
         diags.* = .{ .line = line };
 
         var iter = std.mem.splitSequence(u8, line, ">>");
-        const commandName = iter.next() orelse return error.MissingCommandName;
+        const commandName = iter.next() orelse
+            return diags.setAndTriggerErr(error.MissingCommandName);
         diags.command = commandName;
         var paramsIter = ParamsIterator.init(iter.next() orelse "", diags);
 
@@ -445,20 +494,20 @@ pub const HyprlandEvent = union(enum) {
                     // Assume this is an integer enum that starts at 0 and have no gaps.
                     .@"enum" => |e| {
                         const int = try paramsIter.nextInt();
-                        if (int >= e.fields.len) return error.InvalidBoolean;
+                        if (int >= e.fields.len) return diags.setAndTriggerErr(error.InvalidBoolean);
                         break :initVal @enumFromInt(int);
                     },
-                    .@"struct" => try parseInnerStruct(evField.type, &paramsIter),
+                    .@"struct" => try parseInnerStruct(evField.type, &paramsIter, diags),
                     else => unreachable,
                 };
                 return @unionInit(@This(), command, initVal);
             }
         }
-        return error.UnknownCommand;
+        return diags.setAndTriggerErr(error.UnknownCommand);
     }
 
     /// Helper recursive function to parse inner structs.
-    pub fn parseInnerStruct(stru: type, paramsIter: *ParamsIterator) ParseErrorSet!stru {
+    pub fn parseInnerStruct(stru: type, paramsIter: *ParamsIterator, diags: *ParseDiagnostics) ParseErrorSet!stru {
         var obj: stru = undefined;
         inline for (@typeInfo(stru).@"struct".fields) |field| {
             switch (@typeInfo(field.type)) {
@@ -471,12 +520,13 @@ pub const HyprlandEvent = union(enum) {
                 // and have no gaps.
                 .@"enum" => |e| {
                     const int = try paramsIter.nextInt();
-                    if (int >= e.fields.len) return error.InvalidBoolean;
+                    if (int >= e.fields.len) return diags.setAndTriggerErr(error.InvalidBoolean);
                     @field(obj, field.name) = @enumFromInt(int);
                 },
                 .@"struct" => @field(obj, field.name) = try parseInnerStruct(
                     field.type,
                     paramsIter,
+                    diags,
                 ),
                 else => unreachable,
             }
