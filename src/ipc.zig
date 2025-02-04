@@ -1,7 +1,7 @@
 const std = @import("std");
 const utils = @import("./utils.zig");
-const IpcResult = @import("./request-response.zig").IpcResult;
-const IpcResponse = @import("./request-response.zig").IpcResponse;
+pub const IpcResult = @import("./request-response.zig").IpcResult;
+pub const IpcResponse = @import("./request-response.zig").IpcResponse;
 
 const Allocator = std.mem.Allocator;
 
@@ -146,23 +146,15 @@ pub const HyprlandIPC = struct {
     pub fn requestLayers(self: @This()) !IpcResponse(Command.Layers.Response) {
         return self.sendRequest(Command.Layers.Response, "j/layers");
     }
-    // The splash info request does not return json, even when requested. So it cannot use
-    // the `sendRequest` function, like most of the other info request functions
     /// Gets the current random splash
     pub fn requestSplash(self: @This()) !IpcResponse(Command.Splash.Response) {
-        var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
-        const alloc = arenaAllocator.allocator();
-        const rawResponse = try self.sendRawRequest("splash", alloc);
-        return .{
-            .alloc = arenaAllocator,
-            .rawResponse = rawResponse,
-            .parsed = rawResponse,
-        };
+        // The splash info request does not return json, even when requested.
+        return self.sendRequestUnparsed("splash");
     }
 
     // TODO - actually parse the response
     /// Gets the config option status (values)
-    pub fn requestGetoption(self: @This(), req: Command.GetOption) !IpcResponse(Command.GetOption.Response) {
+    pub fn requestGetOption(self: @This(), req: Command.GetOption) !IpcResponse(Command.GetOption.Response) {
         const requestString = req.makeRequestString(self.alloc);
         defer self.alloc.free(requestString);
         return self.sendRequest(Command.GetOption.Response, requestString);
@@ -175,8 +167,11 @@ pub const HyprlandIPC = struct {
     pub fn requestAnimations(self: @This()) !IpcResponse(Command.Animations.Response) {
         return self.sendRequest(Command.Animations.Response, "j/animations");
     }
+    // TODO - this doesn't seem like it's a hyprland command (which makes sense)
+    // So we must figure out how hyprctl implements this, and copy that behavior
+    // This command in the current state does not work
     /// Lists all running instances of Hyprland with their info
-    pub fn requestInstances(self: @This()) !IpcResponse(Command.Instances.Response) {
+    fn requestInstances(self: @This()) !IpcResponse(Command.Instances.Response) {
         return self.sendRequest(Command.Instances.Response, "j/instances");
     }
     /// Lists all layouts available (including from plugins)
@@ -189,7 +184,8 @@ pub const HyprlandIPC = struct {
     }
     /// Prints tail of the log.
     pub fn requestRollingLog(self: @This()) !IpcResponse(Command.RollingLog.Response) {
-        return self.sendRequest(Command.RollingLog.Response, "j/rollinglog");
+        // Hyprland's json response for this is just bad. It's better to use the raw string.
+        return self.sendRequestUnparsed("rollinglog");
     }
     /// Prints whether the current session is locked.
     pub fn requestLocked(self: @This()) !IpcResponse(Command.Locked.Response) {
@@ -201,11 +197,15 @@ pub const HyprlandIPC = struct {
     }
     /// Prints the current submap the keybinds are in
     pub fn requestSubmap(self: @This()) !IpcResponse(Command.Submap.Response) {
-        return self.sendRequest(Command.Submap.Response, "j/submap");
+        // Hyprland does not return proper json for this command, so the best we can do is
+        // just pass it to the user
+        return self.sendRequestUnparsed("j/systeminfo");
     }
     /// List system info
     pub fn requestSystemInfo(self: @This()) !IpcResponse(Command.SystemInfo.Response) {
-        return self.sendRequest(Command.SystemInfo.Response, "j/systeminfo");
+        // Hyprland does not return proper json for this command, so the best we can do is
+        // just pass it to the user
+        return self.sendRequestUnparsed("j/systeminfo");
     }
     /// List all global shortcuts
     pub fn requestGlobalShortcuts(self: @This()) !IpcResponse(Command.GlobalShortcuts.Response) {
@@ -225,7 +225,18 @@ pub const HyprlandIPC = struct {
         return try socketReadAll(socket, alloc);
     }
 
-    pub fn sendRequest(self: *const @This(), ResponseType: type, request: []const u8) !IpcResponse(ResponseType) {
+    fn sendRequestUnparsed(self: *const @This(), request: []const u8) !IpcResponse([]const u8) {
+        var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
+        const alloc = arenaAllocator.allocator();
+        const rawResponse = try self.sendRawRequest(request, alloc);
+        return .{
+            .alloc = arenaAllocator,
+            .rawResponse = rawResponse,
+            .parsed = rawResponse,
+        };
+    }
+
+    fn sendRequest(self: *const @This(), ResponseType: type, request: []const u8) !IpcResponse(ResponseType) {
         var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
         const alloc = arenaAllocator.allocator();
         const rawResponse = try self.sendRawRequest(request, alloc);
@@ -271,12 +282,3 @@ pub const HyprlandIPC = struct {
         return socket;
     }
 };
-
-// Test wether we can parse the response from all commands.
-// Will call `hyprctl <COMMAND>` replacing <COMMAND> with each one of our commands in `CommandTag`
-test "Hyprland integration json data format" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
-
-    std.log.warn("GPA deinit result: {any}", .{gpa.deinit()});
-}

@@ -1,21 +1,17 @@
 const std = @import("std");
-const HyprlandIPC = @import("./ipc.zig");
-const HyprlandEvents = @import("./events.zig").HyprlandEventSocket;
+const HyprlandIPC = @import("./root.zig").HyprlandIPC;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
 
-    var ipc = try HyprlandIPC.HyprlandIPC.init(alloc);
-    const response = try ipc.sendMonitors();
+    var ipc = try HyprlandIPC.init(alloc);
+    const response = try ipc.sendSetError(HyprlandIPC.Command.SetError{ .set = .{ .message = "Batata", .rgba = 0xff0000ff } });
     std.log.debug("{any}\n", .{response});
     defer response.deinit();
 }
 
 test {
-    // @import("std").testing.refAllDecls(@This());
-}
-
-test "Batata" {
-    std.log.err("{any}\n", .{@typeInfo([]const u8)});
+    @import("std").testing.refAllDecls(@This());
+    @import("std").testing.refAllDecls(@import("./ipc-tests.zig"));
 }

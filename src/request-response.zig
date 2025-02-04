@@ -51,10 +51,10 @@ pub const Command = struct {
     // TODO - make this a tagged union with all possible dispatchers.
     /// Issue a dispatch to call a keybind dispatcher with an argument.
     pub const Dispatch = struct {
-        dispatchers: []const u8,
+        dispatch: []const u8,
 
         pub fn makeRequestString(self: @This(), alloc: Allocator) ![]const u8 {
-            return std.fmt.allocPrint(alloc, "dispatch {s}", .{self.dispatchers});
+            return std.fmt.allocPrint(alloc, "dispatch {s}", .{self.dispatch});
         }
     };
     /// issue a keyword to call a config keyword dynamically.
@@ -109,7 +109,7 @@ pub const Command = struct {
                 .create => |create| std.fmt.allocPrint(
                     alloc,
                     "output create {s} {s}",
-                    .{ create.backend.string(), create.name },
+                    .{ create.backend.string(), create.name orelse "" },
                 ),
                 .remove => |remove| std.fmt.allocPrint(
                     alloc,
@@ -204,12 +204,12 @@ pub const Command = struct {
                 return switch (self.color) {
                     .default => try std.fmt.allocPrint(
                         alloc,
-                        "notify {} {} 0 fontisze:{} {s}",
+                        "notify {} {} 0 fontsize:{} {s}",
                         .{ icon, self.time_ms, fontSize, self.message },
                     ),
                     .rgba => |rgba| try std.fmt.allocPrint(
                         alloc,
-                        "notify {} {} rgba({x:08}) fonsize:{} {s}",
+                        "notify {} {} rgba({x:08}) fontsize:{} {s}",
                         .{ icon, self.time_ms, rgba, fontSize, self.message },
                     ),
                 };
@@ -238,11 +238,10 @@ pub const Command = struct {
         ammount: ?u32,
 
         pub fn makeRequestString(self: @This(), alloc: Allocator) ![]const u8 {
-            return if (self.ammount) |ammount| {
-                std.fmt.allocPrint(alloc, "dismissnotify {d}", .{ammount});
-            } else {
+            return if (self.ammount) |ammount|
+                std.fmt.allocPrint(alloc, "dismissnotify {d}", .{ammount})
+            else
                 std.fmt.allocPrint(alloc, "dismissnotify -1", .{});
-            };
         }
     };
 
@@ -487,8 +486,20 @@ pub const Command = struct {
     };
     /// Gets the currently configured info about animations and beziers
     pub const Animations = struct {
-        // TODO - find shape for this
-        pub const Response = void;
+        // TODO - document what this is. I'm not sure what this info means
+        pub const Response = struct {
+            []const struct {
+                name: []const u8,
+                overridden: bool,
+                bezier: []const u8,
+                enabled: bool,
+                speed: f32,
+                style: []const u8,
+            },
+            []const struct {
+                name: []const u8,
+            },
+        };
     };
     /// Lists all running instances of Hyprland with their info
     pub const Instances = struct {
@@ -509,8 +520,7 @@ pub const Command = struct {
     };
     /// Prints tail of the log.
     pub const RollingLog = struct {
-        // TODO - Hyprland currently does not return valid json
-        pub const Response = void;
+        pub const Response = []const u8;
     };
     /// Prints whether the current session is locked.
     pub const Locked = struct {
@@ -518,24 +528,31 @@ pub const Command = struct {
     };
     /// Returns a JSON with all config options, their descriptions and types.
     pub const Descriptions = struct {
-        // TODO - Hyprland currently does not return valid json
-        pub const Response = void;
+        // TODO - Hyprland does not currently seem to return this in proper json.
+        pub const Response = []const struct {
+            value: []const u8,
+            description: []const u8,
+            // TODO - document what this means. I don't know it yet.
+            type: u32,
+            // TODO - document what this means. I don't know it yet.
+            flags: u32,
+            data: struct {
+                value: bool,
+                min: ?u32,
+                max: ?u32,
+            },
+        };
     };
     /// Prints the current submap the keybinds are in
     pub const Submap = struct {
-        pub const Request = void;
-        // TODO - Hyprland currently does not return valid json
-        pub const Response = void;
+        pub const Response = []const u8;
     };
     /// List system info
     pub const SystemInfo = struct {
-        pub const Request = void;
-        // TODO - currently Hyprland does not return valid json
-        pub const Response = void;
+        pub const Response = []const u8;
     };
     /// List all global shortcuts
     pub const GlobalShortcuts = struct {
-        pub const Request = void;
         // TODO - find a shape for this
         pub const Response = []const struct {};
     };
