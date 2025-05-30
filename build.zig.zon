@@ -1,5 +1,7 @@
 .{
-    .name = "hyprland-zsock",
+    .name = .hyprland_zsock,
     .version = "0.0.0",
+    .fingerprint = 0xb0a1e83d32a9501, // If forking the project, change this.
+    .minimum_zig_version = "0.14.0",
     .paths = .{ "build.zig", "build.zig.zon", "src" },
 }
