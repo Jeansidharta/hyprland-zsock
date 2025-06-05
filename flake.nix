@@ -2,6 +2,7 @@
   inputs = {
     utils.url = "github:numtide/flake-utils";
     zig-flake.url = "github:mitchellh/zig-overlay";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
   };
   outputs =
     {
@@ -20,7 +21,7 @@
         ];
 
         pkgs = nixpkgs.legacyPackages.${system};
-        zig = zig-flake.outputs.packages.${system}.master;
+        zig = pkgs.zig;
         mkLibsLinkScript = ''
           rm --force libs
           ln -s ${pkgs.linkFarm (project_name + "-deps") deps} libs

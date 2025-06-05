@@ -18,6 +18,8 @@ fn socketWriteAll(socket: std.posix.socket_t, message: []const u8) !void {
 fn socketReadAll(socket: std.posix.socket_t, alloc: Allocator) ![]u8 {
     const allocStep = 1024;
     var buffer: []u8 = try alloc.alloc(u8, allocStep);
+    errdefer alloc.free(buffer);
+
     var totalBytesRead: usize = 0;
     while (true) {
         const bytesRead = try std.posix.read(socket, buffer[totalBytesRead..]);
@@ -31,8 +33,8 @@ fn socketReadAll(socket: std.posix.socket_t, alloc: Allocator) ![]u8 {
             buffer = try alloc.realloc(buffer, newBufLen);
         }
     }
-    _ = alloc.resize(buffer, totalBytesRead);
-    buffer = buffer[0..totalBytesRead];
+    // Since totalBytesRead should be smaller than the current buffer size, this should be O(1)
+    buffer = try alloc.realloc(buffer, totalBytesRead);
     return buffer;
 }
 
@@ -238,6 +240,8 @@ pub const HyprlandIPC = struct {
 
     fn sendRequest(self: *const @This(), ResponseType: type, request: []const u8) !IpcResponse(ResponseType) {
         var arenaAllocator = std.heap.ArenaAllocator.init(self.alloc);
+        errdefer arenaAllocator.deinit();
+
         const alloc = arenaAllocator.allocator();
         const rawResponse = try self.sendRawRequest(request, alloc);
         const parsed = try std.json.parseFromSliceLeaky(

@@ -257,6 +257,10 @@ pub const Command = struct {
             tag: []const u8,
             commits: []const u8,
             buildAquamarine: []const u8,
+            buildHyprlang: []const u8,
+            buildHyprutils: []const u8,
+            buildHyprcursor: []const u8,
+            buildHyprgraphics: []const u8,
             flags: []const []const u8,
         };
     };
@@ -310,6 +314,7 @@ pub const Command = struct {
             hasfullscreen: bool,
             lastwindow: []const u8,
             lastwindowtitle: []const u8,
+            ispersistent: bool,
         };
     };
     /// Gets the active workspace and its properties
@@ -323,6 +328,7 @@ pub const Command = struct {
             hasfullscreen: bool,
             lastwindow: []const u8,
             lastwindowtitle: []const u8,
+            ispersistent: bool,
         };
     };
 
@@ -363,6 +369,9 @@ pub const Command = struct {
             tags: []const struct {},
             swallowing: []const u8,
             focusHistoryID: u32,
+            inhibitingIdle: bool,
+            xdgTag: []const u8,
+            xdgDescription: []const u8,
         };
     };
     /// Lists all connected keyboards and mice
@@ -407,6 +416,7 @@ pub const Command = struct {
             mouse: bool,
             release: bool,
             repeat: bool,
+            longPress: bool,
             non_consuming: bool,
             has_description: bool,
             modmask: u32,
@@ -465,6 +475,7 @@ pub const Command = struct {
                     w: u32,
                     h: u32,
                     namespace: []const u8,
+                    pid: u64,
                 },
             ),
         });

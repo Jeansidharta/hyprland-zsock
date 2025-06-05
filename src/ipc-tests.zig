@@ -5,8 +5,8 @@ const IpcResponse = @import("./root.zig").IpcResponse;
 const IpcResult = @import("./root.zig").IpcResult;
 
 fn testCommand(method: anytype, argument: anytype) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
+    var debugAllocator = std.heap.DebugAllocator(.{}){};
+    const alloc = debugAllocator.allocator();
     {
         const ipc = try HyprlandIPC.init(alloc);
         const response = try method(ipc, argument);
@@ -17,21 +17,21 @@ fn testCommand(method: anytype, argument: anytype) !void {
             return error.Failed;
         }
     }
-    if (gpa.deinit() == .leak) {
-        std.log.err("Memory leaks found", .{});
+    if (debugAllocator.deinit() == .leak) {
+        std.debug.print("Memory leaks found", .{});
         return error.memoryLeaks;
     }
 }
 
 fn testRequest(method: anytype) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const alloc = gpa.allocator();
+    var debugAllocator = std.heap.DebugAllocator(.{}){};
+    const alloc = debugAllocator.allocator();
     {
         const ipc = try HyprlandIPC.init(alloc);
         const response = try method(ipc);
         defer response.deinit();
     }
-    if (gpa.deinit() == .leak) {
+    if (debugAllocator.deinit() == .leak) {
         std.log.err("Memory leaks found", .{});
         return error.memoryLeaks;
     }
