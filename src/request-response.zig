@@ -292,6 +292,7 @@ pub const Command = struct {
             vrr: bool,
             solitary: []const u8,
             activelyTearing: bool,
+            directScanoutTo: []const u8,
             disabled: bool,
             currentFormat: []const u8,
             mirrorOf: []const u8,
