@@ -448,6 +448,9 @@ pub const Command = struct {
             tags: []const struct {},
             swallowing: []const u8,
             focusHistoryID: u32,
+            inhibitingIdle: bool,
+            xdgTag: []const u8,
+            xdgDescription: []const u8,
         };
     };
     /// Lists all the layers
