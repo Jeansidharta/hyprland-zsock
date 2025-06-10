@@ -263,7 +263,7 @@ pub const HyprlandEvent = union(enum) {
     /// emitted when a monitor is added (connected)
     monitoraddedv2: struct {
         monitorName: []const u8,
-        monitorId: []const u8,
+        monitorId: i32,
         monitorDescription: []const u8,
     },
     /// emitted when a workspace is created
@@ -401,6 +401,175 @@ pub const HyprlandEvent = union(enum) {
         windowAddress: []const u8,
         pinState: bool,
     },
+
+    pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        switch (self) {
+            .pin => |pin| {
+                try writer.print("pin (windowAddress: \"{s}\", pinState: {})", .{ pin.windowAddress, pin.pinState });
+            },
+            .configreloaded => {
+                try writer.print("configreloaded", .{});
+            },
+            .lockgroups => |state| {
+                try writer.print("lockgroups (state: {})", .{state});
+            },
+            .ignoregrouplock => |state| {
+                try writer.print("ignoregrouplock (state: {})", .{state});
+            },
+            .moveoutofgroup => |moveoutofgroup| {
+                try writer.print("moveoutofgroup (windowAddress: \"{s}\")", .{moveoutofgroup.windowAddress});
+            },
+            .moveintogroup => |moveintogroup| {
+                try writer.print("moveintogroup (windowAddress: \"{s}\")", .{moveintogroup.windowAddress});
+            },
+            .togglegroup => |togglegroup| {
+                try writer.print("togglegroup (state: {}, windowAddress: {any})", .{ togglegroup.state, togglegroup.windowAddress });
+            },
+            .windowtitlev2 => |windowtitlev2| {
+                try writer.print("windowtitlev2 (windoTitle: \"{s}\", windowAddress: \"{s}\")", .{ windowtitlev2.windowTitle, windowtitlev2.windowAddress });
+            },
+            .windowtitle => |windowtitle| {
+                try writer.print("windowtitle (windowAddress: \"{s}\")", .{windowtitle.windowAddress});
+            },
+            .screencast => |screencast| {
+                try writer.print("screencast (state: {}, owner: {s})", .{ screencast.state, switch (screencast.owner) {
+                    .monitor => "monitor",
+                    .window => "window ",
+                } });
+            },
+            .urgent => |urgent| {
+                try writer.print("urgent (windowAddress: \"{s}\")", .{urgent.windowAddress});
+            },
+            .changefloatingmode => |changefloatingmode| {
+                try writer.print("changefloatingmode (windowAddress: \"{s}\", floating: {})", .{ changefloatingmode.windowAddress, changefloatingmode.floating });
+            },
+            .submap => |submap| {
+                try writer.print("submap (submapName: \"{s}\")", .{submap.submapName});
+            },
+            .closelayer => |closelayer| {
+                try writer.print("closelayer (namespace: \"{s}\")", .{closelayer.namespace});
+            },
+            .openlayer => |openlayer| {
+                try writer.print("openlayer (namespace: \"{s}\")", .{openlayer.namespace});
+            },
+            .movewindowv2 => |movewindowv2| {
+                try writer.print(
+                    "movewindowv2 (windowAddress: \"{s}\", workspaceName: \"{s}\", workspaceId: {})",
+                    .{ movewindowv2.windowAddress, movewindowv2.workspaceName, movewindowv2.workspaceId },
+                );
+            },
+            .movewindow => |movewindow| {
+                try writer.print("movewindow (windowAddress: \"{s}\", workspaceName: \"{s}\")", .{ movewindow.windowAddress, movewindow.workspaceName });
+            },
+            .closewindow => |closewindow| {
+                try writer.print("closewindow (windowAddress: \"{s}\")", .{closewindow.windowAddress});
+            },
+            .openwindow => |openwindow| {
+                try writer.print(
+                    "openwindow (windowAddress: \"{s}\", workspaceName: \"{s}\", windowClass: \"{s}\", windowTitle: \"{s}\")",
+                    .{ openwindow.windowAddress, openwindow.workspaceName, openwindow.windowClass, openwindow.windowTitle },
+                );
+            },
+            .activelayout => |activelayout| {
+                try writer.print(
+                    "activelayout (keyboardName: \"{s}\", layoutName: \"{s}\")",
+                    .{ activelayout.keyboardName, activelayout.layoutName },
+                );
+            },
+            .activespecial => |activespecial| {
+                try writer.print(
+                    "activespecial (workspaceName: \"{s}\", monitorName: \"{s}\")",
+                    .{ activespecial.workspaceName, activespecial.monitorName },
+                );
+            },
+            .renameworkspace => |renameworkspace| {
+                try writer.print(
+                    "renameworkspace (workspaceId: {}, newName: \"{s}\")",
+                    .{ renameworkspace.workspaceId, renameworkspace.newName },
+                );
+            },
+            .moveworkspacev2 => |moveworkspacev2| {
+                try writer.print(
+                    "moveworkspacev2 (workspaceName: \"{s}\", monitorName: \"{s}\", workspaceId: {})",
+                    .{ moveworkspacev2.workspaceName, moveworkspacev2.monitorName, moveworkspacev2.workspaceId },
+                );
+            },
+            .moveworkspace => |moveworkspace| {
+                try writer.print(
+                    "moveworkspace (workspaceName: \"{s}\", monitorName: \"{s}\")",
+                    .{ moveworkspace.workspaceName, moveworkspace.monitorName },
+                );
+            },
+            .destroyworkspacev2 => |destroyworkspacev2| {
+                try writer.print(
+                    "destroyworkspacev2 (workspaceName: \"{s}\", workspaceId: {})",
+                    .{ destroyworkspacev2.workspaceName, destroyworkspacev2.workspaceId },
+                );
+            },
+            .destroyworkspace => |destroyworkspace| {
+                try writer.print("destroyworkspace (workspaceName: \"{s}\")", .{destroyworkspace.workspaceName});
+            },
+            .createworkspacev2 => |createworkspacev2| {
+                try writer.print(
+                    "createworkspacev2 (workspaceName: \"{s}\", workspaceId: {})",
+                    .{ createworkspacev2.workspaceName, createworkspacev2.workspaceId },
+                );
+            },
+            .createworkspace => |createworkspace| {
+                try writer.print("createworkspace (workspaceName: \"{s}\")", .{createworkspace.workspaceName});
+            },
+            .monitoraddedv2 => |monitoraddedv2| {
+                try writer.print(
+                    "monitoraddedv2 (monitorName: \"{s}\", monitorId: {}, monitorDescription: \"{s}\")",
+                    .{ monitoraddedv2.monitorName, monitoraddedv2.monitorId, monitoraddedv2.monitorDescription },
+                );
+            },
+            .monitoradded => |monitoradded| {
+                try writer.print("monitoradded (monitorName: \"{s}\")", .{monitoradded.monitorName});
+            },
+            .monitorremoved => |monitorremoved| {
+                try writer.print("monitorremoved (monitorName: \"{s}\")", .{monitorremoved.monitorName});
+            },
+            .fullscreen => |fullscreen| {
+                try writer.print("fullscreen ({s})", .{switch (fullscreen) {
+                    .enter => "enter",
+                    .exit => "exit",
+                }});
+            },
+            .activewindowv2 => |activewindowv2| {
+                try writer.print("activewindowv2 (windowAddress: \"{s}\")", .{activewindowv2.windowAddress});
+            },
+            .activewindow => |activewindow| {
+                try writer.print(
+                    "activewindow (windowClass: \"{s}\", windowTitle: \"{s}\")",
+                    .{ activewindow.windowClass, activewindow.windowTitle },
+                );
+            },
+            .focusedmonv2 => |focusedmonv2| {
+                try writer.print(
+                    "focusedmonv2 (monitorName: \"{s}\", workspaceId: {})",
+                    .{ focusedmonv2.monitorName, focusedmonv2.workspaceId },
+                );
+            },
+            .focusedmon => |focusedmon| {
+                try writer.print(
+                    "focusedmon (workspaceName: \"{s}\", monitorName: \"{s}\")",
+                    .{ focusedmon.workspaceName, focusedmon.monitorName },
+                );
+            },
+            .workspacev2 => |workspacev2| {
+                try writer.print(
+                    "workspacev2 (workspaceName: \"{s}\", workspaceId: {})",
+                    .{ workspacev2.workspaceName, workspacev2.workspaceId },
+                );
+            },
+            .workspace => |workspace| {
+                try writer.print("workspace (workspaceName: \"{s}\")", .{workspace.workspaceName});
+            },
+        }
+    }
 
     fn strEql(a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);

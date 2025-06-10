@@ -21,7 +21,7 @@ fn tryEvents() !void {
             std.log.err("{any}", .{diags});
             continue;
         };
-        std.log.debug("{any}\n", .{event});
+        std.log.debug("{any}", .{event});
         switch (event) {
             .closewindow => std.log.debug("Closing window", .{}),
             else => {},

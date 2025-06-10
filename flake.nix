@@ -21,7 +21,7 @@
         ];
 
         pkgs = nixpkgs.legacyPackages.${system};
-        zig = pkgs.zig;
+        zig = zig-flake.outputs.packages.${system}.master;
         mkLibsLinkScript = ''
           rm --force libs
           ln -s ${pkgs.linkFarm (project_name + "-deps") deps} libs
