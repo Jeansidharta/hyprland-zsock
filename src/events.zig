@@ -226,7 +226,7 @@ pub const HyprlandEvent = union(enum) {
     /// movements (see focusedmon)
     workspacev2: struct {
         workspaceName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted on the active monitor being changed.
     focusedmon: struct {
@@ -236,7 +236,7 @@ pub const HyprlandEvent = union(enum) {
     /// emitted on the active monitor being changed.
     focusedmonv2: struct {
         monitorName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted on the active window being changed.
     activewindow: struct {
@@ -273,7 +273,7 @@ pub const HyprlandEvent = union(enum) {
     /// emitted when a workspace is created
     createworkspacev2: struct {
         workspaceName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted when a workspace is destroyed
     destroyworkspace: struct {
@@ -282,7 +282,7 @@ pub const HyprlandEvent = union(enum) {
     /// emitted when a workspace is destroyed
     destroyworkspacev2: struct {
         workspaceName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted when a workspace is moved to a different monitor
     moveworkspace: struct {
@@ -293,11 +293,11 @@ pub const HyprlandEvent = union(enum) {
     moveworkspacev2: struct {
         workspaceName: []const u8,
         monitorName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted when a workspace is renamed
     renameworkspace: struct {
-        workspaceId: u32,
+        workspaceId: i32,
         newName: []const u8,
     },
     /// emitted when the special workspace opened in a monitor
@@ -331,7 +331,7 @@ pub const HyprlandEvent = union(enum) {
     movewindowv2: struct {
         windowAddress: []const u8,
         workspaceName: []const u8,
-        workspaceId: u32,
+        workspaceId: i32,
     },
     /// emitted when a layerSurface is mapped
     openlayer: struct {
@@ -425,9 +425,9 @@ pub const HyprlandEvent = union(enum) {
             self.diagnostics.numberOfArgumentsRead += 1;
             return arg;
         }
-        pub fn nextInt(self: *@This()) ParseErrorSet!u32 {
+        pub fn nextInt(self: *@This()) ParseErrorSet!i32 {
             const arg = try self.next();
-            return std.fmt.parseInt(u32, arg, 10) catch
+            return std.fmt.parseInt(i32, arg, 10) catch
                 self.diagnostics.setAndTriggerErr(error.InvalidInteger);
         }
         fn parseBoolString(str: []const u8) ParseErrorSet!bool {

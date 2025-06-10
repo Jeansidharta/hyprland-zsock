@@ -269,7 +269,7 @@ pub const Command = struct {
     /// Lists active outputs with their properties, 'monitors all' lists active and inactive outputs
     pub const Monitors = struct {
         pub const Response = []const struct {
-            id: u32,
+            id: i32,
             name: []const u8,
             description: []const u8,
             make: []const u8,
@@ -281,11 +281,11 @@ pub const Command = struct {
             x: i32,
             y: i32,
             activeWorkspace: struct {
-                id: u32,
+                id: i32,
                 name: []const u8,
             },
             specialWorkspace: struct {
-                id: u32,
+                id: i32,
                 name: []const u8,
             },
             reserved: struct { u32, u32, u32, u32 },
@@ -306,10 +306,10 @@ pub const Command = struct {
     /// Lists all workspaces with their properties
     pub const Workspaces = struct {
         pub const Response = []const struct {
-            id: u32,
+            id: i32,
             name: []const u8,
             monitor: []const u8,
-            monitorID: u32,
+            monitorID: i32,
             windows: u32,
             hasfullscreen: bool,
             lastwindow: []const u8,
@@ -320,10 +320,10 @@ pub const Command = struct {
     /// Gets the active workspace and its properties
     pub const ActiveWorkspace = struct {
         pub const Response = struct {
-            id: u32,
+            id: i32,
             name: []const u8,
             monitor: []const u8,
-            monitorID: u32,
+            monitorID: i32,
             windows: u32,
             hasfullscreen: bool,
             lastwindow: []const u8,
@@ -348,7 +348,7 @@ pub const Command = struct {
             at: struct { u32, u32 },
             size: struct { u32, u32 },
             workspace: struct {
-                id: u32,
+                id: i32,
                 name: []const u8,
             },
             floating: bool,
@@ -358,7 +358,7 @@ pub const Command = struct {
             title: []const u8,
             initialClass: []const u8,
             initialTitle: []const u8,
-            pid: u32,
+            pid: i32,
             xwayland: bool,
             pinned: bool,
             fullscreen: u32,
@@ -368,7 +368,7 @@ pub const Command = struct {
             // TODO - find the shape for this
             tags: []const struct {},
             swallowing: []const u8,
-            focusHistoryID: u32,
+            focusHistoryID: i32,
             inhibitingIdle: bool,
             xdgTag: []const u8,
             xdgDescription: []const u8,
