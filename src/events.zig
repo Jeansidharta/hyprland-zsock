@@ -230,8 +230,8 @@ pub const HyprlandEvent = union(enum) {
     },
     /// emitted on the active monitor being changed.
     focusedmon: struct {
-        workspaceName: []const u8,
         monitorName: []const u8,
+        workspaceName: []const u8,
     },
     /// emitted on the active monitor being changed.
     focusedmonv2: struct {
@@ -555,8 +555,8 @@ pub const HyprlandEvent = union(enum) {
             },
             .focusedmon => |focusedmon| {
                 try writer.print(
-                    "focusedmon (workspaceName: \"{s}\", monitorName: \"{s}\")",
-                    .{ focusedmon.workspaceName, focusedmon.monitorName },
+                    "focusedmon (monitorName: \"{s}\", workspaceName: \"{s}\")",
+                    .{ focusedmon.monitorName, focusedmon.workspaceName },
                 );
             },
             .workspacev2 => |workspacev2| {
