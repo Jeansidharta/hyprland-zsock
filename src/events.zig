@@ -225,8 +225,8 @@ pub const HyprlandEvent = union(enum) {
     /// requests a workspace change, and is not emitted on mouse
     /// movements (see focusedmon)
     workspacev2: struct {
-        workspaceName: []const u8,
         workspaceId: i32,
+        workspaceName: []const u8,
     },
     /// emitted on the active monitor being changed.
     focusedmon: struct {
@@ -272,8 +272,8 @@ pub const HyprlandEvent = union(enum) {
     },
     /// emitted when a workspace is created
     createworkspacev2: struct {
-        workspaceName: []const u8,
         workspaceId: i32,
+        workspaceName: []const u8,
     },
     /// emitted when a workspace is destroyed
     destroyworkspace: struct {
@@ -281,8 +281,8 @@ pub const HyprlandEvent = union(enum) {
     },
     /// emitted when a workspace is destroyed
     destroyworkspacev2: struct {
-        workspaceName: []const u8,
         workspaceId: i32,
+        workspaceName: []const u8,
     },
     /// emitted when a workspace is moved to a different monitor
     moveworkspace: struct {
@@ -291,9 +291,9 @@ pub const HyprlandEvent = union(enum) {
     },
     /// emitted when a workspace is moved to a different monitor
     moveworkspacev2: struct {
+        workspaceId: i32,
         workspaceName: []const u8,
         monitorName: []const u8,
-        workspaceId: i32,
     },
     /// emitted when a workspace is renamed
     renameworkspace: struct {
@@ -330,8 +330,8 @@ pub const HyprlandEvent = union(enum) {
     /// emitted when a window is closed
     movewindowv2: struct {
         windowAddress: []const u8,
-        workspaceName: []const u8,
         workspaceId: i32,
+        workspaceName: []const u8,
     },
     /// emitted when a layerSurface is mapped
     openlayer: struct {
