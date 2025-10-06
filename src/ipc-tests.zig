@@ -79,7 +79,7 @@ test "sendSetError" {
             .rgba = 0xFF_00_00_FF,
         },
     });
-    std.time.sleep(1000 * 1000 * 1000 * 0.5);
+    std.Thread.sleep(1000 * 1000 * 1000 * 0.5);
     // It seems that even though everything is correct, Hyprland will still throw an error
     // when disabling the error string.
     testCommand(HyprlandIPC.sendSetError, HyprlandIPC.Command.SetError{ .disable = void{} }) catch {};

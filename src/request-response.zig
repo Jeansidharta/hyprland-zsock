@@ -10,9 +10,7 @@ pub const IpcResult = union(enum) {
         message: []const u8,
     },
 
-    pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         return switch (self) {
             .Ok => writer.writeAll("Ok"),
             .Err => |err| writer.print("Hyprland IPC Error: {s}", .{err.message}),
@@ -33,9 +31,7 @@ pub fn IpcResponse(T: type) type {
         rawResponse: []const u8,
         parsed: T,
 
-        pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-            _ = fmt;
-            _ = options;
+        pub fn format(self: @This(), writer: *std.Io.Writer) !void {
             return std.json.stringify(self.parsed, .{ .whitespace = .indent_2 }, writer);
         }
 
@@ -336,7 +332,20 @@ pub const Command = struct {
     pub const Workspacerules = struct {
         pub const Request = void;
         // TODO - find a shape for this
-        pub const Response = []const struct {};
+        pub const Response = []const struct {
+            monitor: ?[]const u8,
+            default: ?[]const u8,
+            persistent: ?[]const u8,
+            gapsIn: ?struct { i32, i32, i32, i32 },
+            gapsOut: ?struct { i32, i32, i32, i32 },
+            borderSize: ?[]const u8,
+            border: ?[]const u8,
+            rounding: ?[]const u8,
+            decorate: ?[]const u8,
+            shadow: ?[]const u8,
+            defaultName: ?[]const u8,
+            workspaceString: []const u8,
+        };
     };
     /// Lists all windows with their properties
     pub const Clients = struct {

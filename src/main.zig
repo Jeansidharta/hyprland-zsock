@@ -18,10 +18,10 @@ fn tryEvents() !void {
     var diags: EventParseDiagnostics = undefined;
     while (true) {
         const event = eventsSocket.consumeEvent(&diags) catch {
-            std.log.err("{any}", .{diags});
+            std.log.err("{f}", .{diags});
             continue;
         };
-        std.log.debug("{any}", .{event});
+        std.log.debug("{f}", .{event});
         switch (event) {
             .closewindow => std.log.debug("Closing window", .{}),
             else => {},

@@ -14,11 +14,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe_mod.addImport("hyprland-zsock_lib", lib_mod);
-    const lib = b.addStaticLibrary(.{
-        .name = "hyprland-zsock",
-        .root_module = lib_mod,
-    });
-    b.installArtifact(lib);
     const exe = b.addExecutable(.{
         .name = "hyprland-zsock",
         .root_module = exe_mod,

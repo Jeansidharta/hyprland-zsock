@@ -35,15 +35,7 @@ pub const ParseDiagnostics = struct {
         return err;
     }
 
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         if (self.line == null) {
             try writer.print("Error reading from socket: {any}", .{self.err});
         }
@@ -402,9 +394,7 @@ pub const HyprlandEvent = union(enum) {
         pinState: bool,
     },
 
-    pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         switch (self) {
             .pin => |pin| {
                 try writer.print("pin (windowAddress: \"{s}\", pinState: {})", .{ pin.windowAddress, pin.pinState });
