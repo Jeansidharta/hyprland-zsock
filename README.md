@@ -1,6 +1,13 @@
 # hyprland-zsock
 
-A zig library to read and write to Hyprlands' IPC sockets, as described in the [Hyprland wiki](https://wiki.hyprland.org/IPC/).
+## ⚠️⚠️⚠️ WARNING ⚠️⚠️⚠️
+
+This is currently unmaintained. I don't use hyprland anymore.
+
+A zig library to read and write to Hyprlands' IPC sockets, as described in the
+[Hyprland wiki](https://wiki.hyprland.org/IPC/).
+
+For zig v0.15.1
 
 ## Installing
 
@@ -49,7 +56,9 @@ pub fn main() !void {
     }
 }
 ```
+
 Here's and example of calling a hyprland command:
+
 ```zig
 const std = @import("std");
 const HyprlandIPC = @import("./root.zig").HyprlandIPC;
@@ -72,15 +81,25 @@ fn main() !void {
     try stdout.print("{any}\n", .{response});
 }
 ```
+
 ## Usage
 
-Currently there are two sockets available from Hyprland: a command socket and an event socket. This library provides abstractions over both of them.
+Currently there are two sockets available from Hyprland: a command socket and an
+event socket. This library provides abstractions over both of them.
 
 ### eventListener
 
-The event socket can be communicated with using the `HyprlandEventSocket` exported struct. First, init the scruct using `var eventListener = try HyprlandEventSocket.init()` and then call `try eventListener.consumeEvent(null)` to read the next event sent by Hyprland.
+The event socket can be communicated with using the `HyprlandEventSocket`
+exported struct. First, init the scruct using
+`var eventListener = try HyprlandEventSocket.init()` and then call
+`try eventListener.consumeEvent(null)` to read the next event sent by Hyprland.
 
-If this library is updated, the `consumeEvent` function should generally not throw any errors, but if it does, it's possible to know why by passing a reference to `EventParseDiagnostics` to it instead of null. This object will be populated with enough information to know when then function had an error, and why. If you don't care much about a custom error message, you can just print the diagnostics object, as such:
+If this library is updated, the `consumeEvent` function should generally not
+throw any errors, but if it does, it's possible to know why by passing a
+reference to `EventParseDiagnostics` to it instead of null. This object will be
+populated with enough information to know when then function had an error, and
+why. If you don't care much about a custom error message, you can just print the
+diagnostics object, as such:
 
 ```zig
 var diags: EventParseDiagnostics = undefined;
@@ -91,13 +110,26 @@ const event = eventListener.consumeEvent(&diags) catch {
 
 ### IPC commands
 
-To send commands through the Hyprland IPC socket, the `HyprlandIpc` struct should be used. This one will require an allocator, as opposed to the event listener struct. The init function should be called like this: `var ipc = try HyprlandIpc.init(allocator)`. Any command could then be called like `try ipc.requestActiveWindow()` or `try ipc.sendNotify(notifyRequest)`.
+To send commands through the Hyprland IPC socket, the `HyprlandIpc` struct
+should be used. This one will require an allocator, as opposed to the event
+listener struct. The init function should be called like this:
+`var ipc = try HyprlandIpc.init(allocator)`. Any command could then be called
+like `try ipc.requestActiveWindow()` or `try ipc.sendNotify(notifyRequest)`.
 
 The IPC functions are separated between **requests** and **commands**
-- Request function names are prepended with `request` and are generally used to get information from Hyprland, without sending much or any data. An example is `requestSplash`, which takes no argument and returns the current splash message.
-- Command function names are prepended with `send` and are generally used to tell Hyprland to do something or change an attribute/option. It takes a request object, which is used as arguments to the command requested. An example is the `sendSetError` function, which sets the current error message displayed on the desktop.
 
-Since the response is allocated, the returned object must be deallocated after being used. Here's an example of calling a request function:
+- Request function names are prepended with `request` and are generally used to
+  get information from Hyprland, without sending much or any data. An example is
+  `requestSplash`, which takes no argument and returns the current splash
+  message.
+- Command function names are prepended with `send` and are generally used to
+  tell Hyprland to do something or change an attribute/option. It takes a
+  request object, which is used as arguments to the command requested. An
+  example is the `sendSetError` function, which sets the current error message
+  displayed on the desktop.
+
+Since the response is allocated, the returned object must be deallocated after
+being used. Here's an example of calling a request function:
 
 ```zig
 {
@@ -110,5 +142,5 @@ Since the response is allocated, the returned object must be deallocated after b
 
 ## Contributing
 
-If you find any problems or have any suggestions, feel free to open an issue or a pull request
-
+If you find any problems or have any suggestions, feel free to open an issue or
+a pull request
